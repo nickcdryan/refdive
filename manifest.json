@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "RefDive",
+  "version": "1.0",
+  "description": "PDF viewer with reference diving capabilities",
+  "permissions": [
+    "webRequest"
+  ],
+  "host_permissions": [
+    "*://*/*.pdf",
+    "*://arxiv.org/*",
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [{
+    "resources": [
+      "web/*",
+      "build/*"
+    ],
+    "matches": ["<all_urls>"]
+  }],
+  "content_scripts": [{
+    "matches": ["*://*/*.pdf", "*://arxiv.org/*"],
+    "js": ["content.mjs"],
+    "type": "module",
+    "run_at": "document_start"
+  }]
+}
