@@ -6,19 +6,20 @@ PDF viewer Chrome extension with reference diving capabilities.
 
 1. Clone the repository:
 
-bash
+```bash
 git clone https://github.com/yourusername/refdive.git
 cd refdive
-
+```
 2. Install dependencies:
 
-bash
+```bash
 npm install
-
+```
 3. Build the extension:
 
-bash
+```bash
 npm run build
+```
 
 4. Load the extension in Chrome:
    - Open Chrome and navigate to `chrome://extensions/`
