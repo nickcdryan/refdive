@@ -132,6 +132,27 @@ function scrollIntoView(element, spot, scrollMatches = false) {
   }
   parent.scrollTop = offsetY;
 }
+function createCitationPopup(linkElement, citationText) {
+  const popup = document.createElement('div');
+  popup.className = 'citationPopup';
+  popup.textContent = citationText || 'Citation preview loading...';
+  
+  // Position the popup above the link
+  const linkRect = linkElement.getBoundingClientRect();
+  popup.style.bottom = `${linkRect.height + 5}px`; // 5px gap
+  popup.style.left = '0';
+  
+  linkElement.appendChild(popup);
+}
+
+function addCitationPopups() {
+  const linkAnnotations = document.querySelectorAll('.annotationLayer .linkAnnotation');
+  linkAnnotations.forEach(link => {
+    // You'll need logic here to determine if this is a citation link
+    // For now, let's assume all links are citations
+    createCitationPopup(link);
+  });
+}
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {
   const debounceScroll = function (evt) {
     if (rAF) {
@@ -10694,6 +10715,7 @@ class PDFPageView {
         annotationEditorUIManager,
         onAppend: annotationLayerDiv => {
           this.#addLayer(annotationLayerDiv, "annotationLayer");
+          addCitationPopups();
         }
       });
     }

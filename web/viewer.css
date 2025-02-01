@@ -4076,9 +4076,10 @@ body.wait::before{
   }
 
 #pageNumber{
-  -moz-appearance:textfield;
-  text-align:end;
-  width:40px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+  text-align: end;
+  width: 40px;
   background-size:0 0;
   transition-property:none;
 }
@@ -5189,5 +5190,37 @@ dialog :link{
 @media all and (max-width: 560px){
   #scaleSelectContainer{
     display:none;
+  }
+}
+
+.citationPopup {
+  position: absolute;
+  font-size: calc(9px * var(--scale-factor));
+  pointer-events: none;
+  width: max-content;
+  max-width: 300px;
+  background-color: rgb(255 255 153);
+  box-shadow: 0 2px 5px rgba(136, 136, 136, 0.5);
+  border-radius: 2px;
+  outline: 1.5px solid rgb(255 255 74);
+  padding: 6px;
+  font: message-box;
+  white-space: normal;
+  word-wrap: break-word;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.annotationLayer .linkAnnotation:hover .citationPopup {
+  opacity: 1;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :where(html:not(.is-light)) .citationPopup {
+    background-color: #5a3100;
+    color: #fbfbfe;
+    outline-color: #e49c49;
   }
 }
