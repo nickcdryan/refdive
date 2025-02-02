@@ -1,0 +1,109 @@
+async function createCitationPopup(linkElement) {
+  const href = linkElement.querySelector('a').getAttribute('href');
+  if (!href?.startsWith('#cite.')) return;
+  
+  if (firstCitationProcessed) return;
+  firstCitationProcessed = true;
+  
+  const citationId = href.substring(6);
+  console.log('Processing FIRST citation reference:', citationId);
+  
+  try {
+    // Add reference marker (same as before)
+    const refMarker = document.createElement('div');
+    refMarker.className = 'debugMarker';
+    refMarker.style.width = '20px';
+    refMarker.style.height = '20px';
+    
+    const annotationLayer = linkElement.closest('.annotationLayer');
+    if (annotationLayer) {
+      refMarker.style.position = 'absolute';
+      refMarker.style.left = '0';
+      refMarker.style.top = '0';
+      linkElement.appendChild(refMarker);
+      console.log('Added reference marker');
+    }
+    
+    // Find the citation destination
+    const pdfDoc = PDFViewerApplication.pdfDocument;
+    let bibliographyPage = null;
+    let bibliographyCitation = null;
+    
+    // Search all pages for bibliography
+    for (let pageNum = pdfDoc.numPages; pageNum > 0; pageNum--) {
+      const page = await pdfDoc.getPage(pageNum);
+      const annotations = await page.getAnnotations();
+      
+      // Look for citation in bibliography
+      const citation = annotations.find(a => 
+        a.subtype === 'Link' && a.dest === `cite.${citationId}`
+      );
+      
+      if (citation) {
+        bibliographyPage = pageNum;
+        bibliographyCitation = citation;
+        console.log('Found bibliography on page:', pageNum);
+        break;
+      }
+    }
+    
+    if (bibliographyPage && bibliographyCitation) {
+      const pageView = PDFViewerApplication.pdfViewer.getPageView(bibliographyPage - 1);
+      console.log('Found citation destination:', {
+        page: bibliographyPage,
+        rect: bibliographyCitation.rect,
+        dest: bibliographyCitation.dest,
+        pageHeight: pageView.viewport.height,
+        pageWidth: pageView.viewport.width
+      });
+      
+      // Add destination marker (rest of code same as before)
+    }
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+async function findFirstCitationDestination() {
+    const doc = PDFViewerApplication.pdfDocument;
+    const page = await doc.getPage(1);
+    const annotations = await page.getAnnotations();
+    
+    // Find first link annotation
+    const firstLink = annotations.find(a => a.subtype === 'Link' && a.dest);
+    
+    if (!firstLink) {
+        console.log("No citation link found");
+        return;
+    }
+
+    console.log("Link destination name:", firstLink.dest);
+
+    // Resolve the named destination
+    const destination = await doc.getDestination(firstLink.dest);
+    console.log("Resolved destination:", destination);
+
+    if (destination) {
+        // destination will be array like [pageRef, /XYZ, left, top, zoom]
+        const pageRef = destination[0];
+        const destPageNum = await doc.getPageIndex(pageRef);
+        
+        console.log("Citation appears on page:", destPageNum + 1);
+        console.log("At coordinates:", {
+            x: destination[2],
+            y: destination[3]
+        });
+    }
+}
+
+findFirstCitationDestination();

@@ -132,25 +132,179 @@ function scrollIntoView(element, spot, scrollMatches = false) {
   }
   parent.scrollTop = offsetY;
 }
-function createCitationPopup(linkElement, citationText) {
-  const popup = document.createElement('div');
-  popup.className = 'citationPopup';
-  popup.textContent = citationText || 'Citation preview loading...';
-  
-  // Position the popup above the link
-  const linkRect = linkElement.getBoundingClientRect();
-  popup.style.bottom = `${linkRect.height + 5}px`; // 5px gap
-  popup.style.left = '0';
-  
-  linkElement.appendChild(popup);
+
+
+
+
+
+
+let processedAnnotationIds = new Set();
+let citationTexts = new Map();
+let processingTimeout = null;
+
+async function createCitationPopup(dummy) {
+    if (!PDFViewerApplication?.pdfDocument) {
+        console.log("PDF viewer not ready yet");
+        return;
+    }
+
+    const doc = PDFViewerApplication.pdfDocument;  // Get document reference here
+
+    async function addReferenceMarker(element, citationText) {
+        if (element.querySelector('.citation-marker-wrapper')) return;
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'citation-marker-wrapper';
+        wrapper.style.cssText = `
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 1000;
+        `;
+
+        const refMarker = document.createElement('div');
+        refMarker.className = 'citation-marker';
+        refMarker.style.cssText = `
+            width: 20px;
+            height: 20px;
+            background-color: rgba(255, 0, 0, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+        `;
+
+        const popup = document.createElement('div');
+        popup.className = 'citation-popup';
+        popup.style.cssText = `
+            position: absolute;
+            visibility: hidden;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 8px;
+            width: 300px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            font-size: 12px;
+            color: black;
+            top: 25px;
+            left: 0;
+            z-index: 1001;
+        `;
+        popup.textContent = citationText;
+
+        wrapper.addEventListener('mouseenter', () => {
+            popup.style.visibility = 'visible';
+        });
+        
+        wrapper.addEventListener('mouseleave', () => {
+            popup.style.visibility = 'hidden';
+        });
+
+        wrapper.appendChild(refMarker);
+        wrapper.appendChild(popup);
+        element.appendChild(wrapper);
+    }
+
+    async function processCitationsOnPage() {
+        if (processingTimeout) {
+            clearTimeout(processingTimeout);
+        }
+
+        processingTimeout = setTimeout(async () => {
+            const linkElements = document.querySelectorAll('[data-annotation-id]');
+            const citationLinks = Array.from(linkElements).filter(link => {
+                const href = link.querySelector('a')?.getAttribute('href');
+                const annotationId = link.getAttribute('data-annotation-id');
+                return href?.startsWith('#cite.') && 
+                       (!processedAnnotationIds.has(annotationId) || 
+                        !link.querySelector('.citation-marker-wrapper'));
+            });
+
+            if (citationLinks.length === 0) return;
+
+            console.log(`Processing ${citationLinks.length} citations`);
+
+            for (const link of citationLinks) {
+                try {
+                    const annotationId = link.getAttribute('data-annotation-id');
+                    
+                    if (citationTexts.has(annotationId)) {
+                        addReferenceMarker(link, citationTexts.get(annotationId));
+                        continue;
+                    }
+
+                    const href = link.querySelector('a').getAttribute('href');
+                    const citationId = href.substring(6);
+                    
+                    const destination = await doc.getDestination(`cite.${citationId}`);
+                    if (!destination) continue;
+
+                    const pageRef = destination[0];
+                    const destPageNum = await doc.getPageIndex(pageRef);
+                    const x = destination[2];
+                    const y = destination[3];
+
+                    const page = await doc.getPage(destPageNum + 1);
+                    const textContent = await page.getTextContent();
+
+                    const nearbyItems = textContent.items
+                        .filter(item => {
+                            const itemY = item.transform[5];
+                            const itemX = item.transform[4];
+                            return Math.abs(itemY - y) < 50 && Math.abs(itemX - x) < 200;
+                        })
+                        .sort((a, b) => {
+                            const yDiff = b.transform[5] - a.transform[5];
+                            if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+                            return yDiff;
+                        });
+
+                    if (nearbyItems.length > 0) {
+                        const citationText = nearbyItems
+                            .map(item => item.str)
+                            .join(' ')
+                            .replace(/\s+/g, ' ')
+                            .trim();
+                        
+                        citationTexts.set(annotationId, citationText);
+                        processedAnnotationIds.add(annotationId);
+                        addReferenceMarker(link, citationText);
+                    }
+                } catch (error) {
+                    console.error("Error processing citation:", error);
+                }
+            }
+        }, 100);
+    }
+
+    // Process citations when page is rendered
+    const pageRenderedCallback = () => {
+        processCitationsOnPage();
+    };
+
+    window.removeEventListener('pagerendered', pageRenderedCallback);
+    window.addEventListener('pagerendered', pageRenderedCallback);
+
+    // Initial processing
+    await processCitationsOnPage();
 }
+
+// Clear the processed sets when document changes
+window.addEventListener('documentload', () => {
+    processedAnnotationIds.clear();
+    citationTexts.clear();
+});
+
+
+
+
 
 function addCitationPopups() {
   const linkAnnotations = document.querySelectorAll('.annotationLayer .linkAnnotation');
   linkAnnotations.forEach(link => {
-    // You'll need logic here to determine if this is a citation link
-    // For now, let's assume all links are citations
-    createCitationPopup(link);
+    const href = link.querySelector('a')?.getAttribute('href');
+    if (href?.startsWith('#cite.')) {
+      createCitationPopup(link);
+    }
   });
 }
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {

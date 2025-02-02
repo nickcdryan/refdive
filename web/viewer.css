@@ -5224,3 +5224,13 @@ dialog :link{
     outline-color: #e49c49;
   }
 }
+
+.debugMarker {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: red;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1000;
+}
