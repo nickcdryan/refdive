@@ -169,13 +169,13 @@ async function createCitationPopup(dummy) {
           height: 20px;
           background-color: rgba(255, 0, 0, 0.5);
           border-radius: 50%;
-          pointer-events: none;
       `;
   
       const popup = document.createElement('div');
       popup.className = 'citation-popup';
+      // Position popup fixed relative to viewport
       popup.style.cssText = `
-          position: absolute;
+          position: fixed;
           visibility: hidden;
           background-color: white;
           border: 1px solid #ccc;
@@ -185,9 +185,7 @@ async function createCitationPopup(dummy) {
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
           font-size: 12px;
           color: black;
-          top: 25px;
-          left: 0;
-          z-index: 1001;
+          z-index: 999999;
       `;
   
       // Add citation text
@@ -201,7 +199,6 @@ async function createCitationPopup(dummy) {
           const arxivNumber = arxivMatch[1];
           const arxivUrl = `https://arxiv.org/pdf/${arxivNumber}`;
           
-          // Add link
           const linkDiv = document.createElement('div');
           linkDiv.style.cssText = `
               margin-top: 8px;
@@ -222,17 +219,63 @@ async function createCitationPopup(dummy) {
           popup.appendChild(linkDiv);
       }
   
-      wrapper.addEventListener('mouseenter', () => {
-          popup.style.visibility = 'visible';
+      let isOverMarker = false;
+      let isOverPopup = false;
+  
+      const updatePopupVisibility = () => {
+          if (isOverMarker || isOverPopup) {
+              // Position popup near the marker
+              const markerRect = refMarker.getBoundingClientRect();
+              popup.style.top = `${markerRect.bottom + 5}px`;
+              popup.style.left = `${markerRect.left}px`;
+              popup.style.visibility = 'visible';
+          } else {
+              popup.style.visibility = 'hidden';
+          }
+      };
+  
+      refMarker.addEventListener('mouseenter', () => {
+          isOverMarker = true;
+          updatePopupVisibility();
       });
       
-      wrapper.addEventListener('mouseleave', () => {
-          popup.style.visibility = 'hidden';
+      refMarker.addEventListener('mouseleave', (event) => {
+          isOverMarker = false;
+          setTimeout(() => {
+              updatePopupVisibility();
+          }, 100);
+      });
+  
+      popup.addEventListener('mouseenter', () => {
+          isOverPopup = true;
+          updatePopupVisibility();
+      });
+      
+      popup.addEventListener('mouseleave', (event) => {
+          if (!popup.contains(event.relatedTarget)) {
+              isOverPopup = false;
+              updatePopupVisibility();
+          }
       });
   
       wrapper.appendChild(refMarker);
-      wrapper.appendChild(popup);
+      // Add popup to document body instead of wrapper
+      document.body.appendChild(popup);
       element.appendChild(wrapper);
+  
+      // Clean up popup when wrapper is removed
+      const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+              mutation.removedNodes.forEach((node) => {
+                  if (node === wrapper || node.contains(wrapper)) {
+                      popup.remove();
+                      observer.disconnect();
+                  }
+              });
+          });
+      });
+  
+      observer.observe(element.parentNode, { childList: true, subtree: true });
   }
 
     async function extractCitationText(destPageNum, x, y, textContent) {
