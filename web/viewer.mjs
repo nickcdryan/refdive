@@ -151,58 +151,89 @@ async function createCitationPopup(dummy) {
     const doc = PDFViewerApplication.pdfDocument;
 
     async function addReferenceMarker(element, citationText) {
-        if (element.querySelector('.citation-marker-wrapper')) return;
-        
-        const wrapper = document.createElement('div');
-        wrapper.className = 'citation-marker-wrapper';
-        wrapper.style.cssText = `
-            position: absolute;
-            left: 0;
-            top: 0;
-            z-index: 1000;
-        `;
-
-        const refMarker = document.createElement('div');
-        refMarker.className = 'citation-marker';
-        refMarker.style.cssText = `
-            width: 20px;
-            height: 20px;
-            background-color: rgba(255, 0, 0, 0.5);
-            border-radius: 50%;
-            pointer-events: none;
-        `;
-
-        const popup = document.createElement('div');
-        popup.className = 'citation-popup';
-        popup.style.cssText = `
-            position: absolute;
-            visibility: hidden;
-            background-color: white;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 8px;
-            width: 300px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            font-size: 12px;
-            color: black;
-            top: 25px;
-            left: 0;
-            z-index: 1001;
-        `;
-        popup.textContent = citationText;
-
-        wrapper.addEventListener('mouseenter', () => {
-            popup.style.visibility = 'visible';
-        });
-        
-        wrapper.addEventListener('mouseleave', () => {
-            popup.style.visibility = 'hidden';
-        });
-
-        wrapper.appendChild(refMarker);
-        wrapper.appendChild(popup);
-        element.appendChild(wrapper);
-    }
+      if (element.querySelector('.citation-marker-wrapper')) return;
+      
+      const wrapper = document.createElement('div');
+      wrapper.className = 'citation-marker-wrapper';
+      wrapper.style.cssText = `
+          position: absolute;
+          left: 0;
+          top: 0;
+          z-index: 1000;
+      `;
+  
+      const refMarker = document.createElement('div');
+      refMarker.className = 'citation-marker';
+      refMarker.style.cssText = `
+          width: 20px;
+          height: 20px;
+          background-color: rgba(255, 0, 0, 0.5);
+          border-radius: 50%;
+          pointer-events: none;
+      `;
+  
+      const popup = document.createElement('div');
+      popup.className = 'citation-popup';
+      popup.style.cssText = `
+          position: absolute;
+          visibility: hidden;
+          background-color: white;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          padding: 8px;
+          width: 300px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          font-size: 12px;
+          color: black;
+          top: 25px;
+          left: 0;
+          z-index: 1001;
+      `;
+  
+      // Add citation text
+      const textDiv = document.createElement('div');
+      textDiv.textContent = citationText;
+      popup.appendChild(textDiv);
+  
+      // Check for arXiv number
+      const arxivMatch = citationText.match(/arXiv:(\d+\.\d+)/);
+      if (arxivMatch) {
+          const arxivNumber = arxivMatch[1];
+          const arxivUrl = `https://arxiv.org/pdf/${arxivNumber}`;
+          
+          // Add link
+          const linkDiv = document.createElement('div');
+          linkDiv.style.cssText = `
+              margin-top: 8px;
+              font-size: 11px;
+          `;
+          
+          const link = document.createElement('a');
+          link.href = arxivUrl;
+          link.target = "_blank";
+          link.textContent = "Open PDF";
+          link.style.cssText = `
+              color: blue;
+              text-decoration: underline;
+              cursor: pointer;
+          `;
+          
+          linkDiv.appendChild(link);
+          popup.appendChild(linkDiv);
+      }
+  
+      wrapper.addEventListener('mouseenter', () => {
+          popup.style.visibility = 'visible';
+      });
+      
+      wrapper.addEventListener('mouseleave', () => {
+          popup.style.visibility = 'hidden';
+      });
+  
+      wrapper.appendChild(refMarker);
+      wrapper.appendChild(popup);
+      element.appendChild(wrapper);
+  }
 
     async function extractCitationText(destPageNum, x, y, textContent) {
       console.log("Extracting citation from coordinates:", {x, y});
