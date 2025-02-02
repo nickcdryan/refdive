@@ -148,7 +148,7 @@ async function createCitationPopup(dummy) {
         return;
     }
 
-    const doc = PDFViewerApplication.pdfDocument;  // Get document reference here
+    const doc = PDFViewerApplication.pdfDocument;
 
     async function addReferenceMarker(element, citationText) {
         if (element.querySelector('.citation-marker-wrapper')) return;
@@ -204,6 +204,69 @@ async function createCitationPopup(dummy) {
         element.appendChild(wrapper);
     }
 
+    async function extractCitationText(destPageNum, x, y, textContent) {
+      console.log("Extracting citation from coordinates:", {x, y});
+      
+      // Sort items top to bottom
+      const items = textContent.items.sort((a, b) => b.transform[5] - a.transform[5]);
+  
+      // Find the first citation starter below our target y-coordinate
+      const startItem = items.find(item => 
+          // Item is below our target y
+          item.transform[5] < y && 
+          // Item starts at the citation start x-coordinate
+          Math.abs(item.transform[4] - 70.866) < 1
+      );
+  
+      if (!startItem) {
+          console.log("Could not find start of citation");
+          return null;
+      }
+  
+      console.log("Found citation start:", {
+          text: startItem.str,
+          x: startItem.transform[4],
+          y: startItem.transform[5]
+      });
+  
+      // Collect all parts of this citation
+      const citationParts = [];
+      let currentY = startItem.transform[5];
+      
+      for (const item of items) {
+          // If this item is on the same line or is an indented continuation
+          if (Math.abs(item.transform[5] - currentY) < 5) {
+              citationParts.push(item);
+          }
+          // If this is an indented continuation on next line
+          else if (item.transform[5] < currentY && 
+                   item.transform[5] > currentY - 15 && 
+                   item.transform[4] > 70.866) {
+              citationParts.push(item);
+              currentY = item.transform[5];
+          }
+          // If we hit the next citation starter, stop
+          else if (item.transform[5] < currentY && 
+                   Math.abs(item.transform[4] - 70.866) < 1) {
+              break;
+          }
+      }
+  
+      const citationText = citationParts
+          .sort((a, b) => {
+              const yDiff = b.transform[5] - a.transform[5];
+              if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+              return yDiff;
+          })
+          .map(item => item.str)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+  
+      console.log("Extracted citation:", citationText);
+      return citationText;
+  }
+
     async function processCitationsOnPage() {
         if (processingTimeout) {
             clearTimeout(processingTimeout);
@@ -246,25 +309,9 @@ async function createCitationPopup(dummy) {
                     const page = await doc.getPage(destPageNum + 1);
                     const textContent = await page.getTextContent();
 
-                    const nearbyItems = textContent.items
-                        .filter(item => {
-                            const itemY = item.transform[5];
-                            const itemX = item.transform[4];
-                            return Math.abs(itemY - y) < 50 && Math.abs(itemX - x) < 200;
-                        })
-                        .sort((a, b) => {
-                            const yDiff = b.transform[5] - a.transform[5];
-                            if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
-                            return yDiff;
-                        });
-
-                    if (nearbyItems.length > 0) {
-                        const citationText = nearbyItems
-                            .map(item => item.str)
-                            .join(' ')
-                            .replace(/\s+/g, ' ')
-                            .trim();
-                        
+                    const citationText = await extractCitationText(destPageNum, x, y, textContent);
+                    
+                    if (citationText) {
                         citationTexts.set(annotationId, citationText);
                         processedAnnotationIds.add(annotationId);
                         addReferenceMarker(link, citationText);
