@@ -135,98 +135,201 @@ function scrollIntoView(element, spot, scrollMatches = false) {
 
 
 
-
-
-
 let processedAnnotationIds = new Set();
 let citationTexts = new Map();
-let processingTimeout = null;
+let detectedFormat = null;
+let isProcessing = false;  // Add processing lock
 
-async function createCitationPopup(dummy) {
-    if (!PDFViewerApplication?.pdfDocument) {
-        console.log("PDF viewer not ready yet");
-        return;
+async function detectCitationFormat(doc, firstLink) {
+    if (detectedFormat) return detectedFormat;
+
+    try {
+        const href = firstLink.querySelector('a').getAttribute('href');
+        const citationId = href.substring(6);
+        const destination = await doc.getDestination(`cite.${citationId}`);
+        
+        if (!destination) return null;
+
+        const pageRef = destination[0];
+        const destPageNum = await doc.getPageIndex(pageRef);
+        const page = await doc.getPage(destPageNum + 1);
+        const textContent = await page.getTextContent();
+        
+        // Find the first item that looks like a citation
+        const citationStart = textContent.items.find(item => 
+            Math.abs(item.transform[5] - destination[3]) < 20 &&
+            (item.str.match(/^\[\d+\]/) || item.str.match(/^[A-Z][a-zA-Z\s,]/))
+        );
+
+        if (!citationStart) return null;
+
+        detectedFormat = {
+            citationX: citationStart.transform[4],
+            margin: 15,
+            hasNumbers: !!citationStart.str.match(/^\[\d+\]/)
+        };
+
+        return detectedFormat;
+    } catch (error) {
+        console.error("Error detecting format:", error);
+        return null;
     }
+}
 
-    const doc = PDFViewerApplication.pdfDocument;
+async function extractCitationText(destPageNum, x, y, textContent, format) {
+  // Sort items once
+  const items = textContent.items.sort((a, b) => {
+      const yDiff = a.transform[5] - b.transform[5];
+      if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+      return yDiff;
+  });
 
-    async function addReferenceMarker(element, citationText) {
-      if (element.querySelector('.citation-marker-wrapper')) return;
+  // Find all citation starters (but without excessive logging)
+  const citationStarters = items.filter(item => {
+      let isCitation;
+      if (format.hasNumbers) {
+          isCitation = item.str.match(/^\[\d+\]/) ||
+                      item.str.match(/^\d+\./) ||
+                      item.str.match(/^\(\d+\)/);
+      } else {
+          isCitation = item.str.match(/^[A-Z][a-zA-Z\s,]/);
+      }
       
-      // Get the rect dimensions from the annotation
-      const linkRect = element.getBoundingClientRect();
-      
-      const wrapper = document.createElement('div');
-      wrapper.className = 'citation-marker-wrapper';
-      wrapper.style.cssText = `
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-          z-index: 1000;
-      `;
-  
-      const refMarker = document.createElement('div');
-      refMarker.className = 'citation-marker';
-      refMarker.style.cssText = `
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(255, 0, 0, 0.2);
-          border-radius: 2px;
-      `;
-  
-      const popup = document.createElement('div');
-      popup.className = 'citation-popup';
-      popup.style.cssText = `
-          position: fixed;
-          visibility: hidden;
-          background-color: white;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-          padding: 8px;
-          width: 300px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-          font-size: 12px;
-          color: black;
-          z-index: 999999;
-      `;
-  
+      const isAligned = Math.abs(item.transform[4] - format.citationX) < format.margin;
+      return isCitation && isAligned;
+  });
 
+  // Find the first starter at or below our target y-coordinate
+  // but if none found, fall back to closest starter
+  let targetStarter = citationStarters.find(item => 
+      item.transform[5] <= y + 5 && 
+      item.transform[5] >= y - 15
+  );
+
+  // If no starter found in immediate range, fall back to closest
+  if (!targetStarter) {
+      let minDistance = Infinity;
+      citationStarters.forEach(item => {
+          const distance = Math.abs(item.transform[5] - y);
+          if (distance < minDistance) {
+              minDistance = distance;
+              targetStarter = item;
+          }
+      });
+  }
+
+  if (!targetStarter) return null;
+
+  // Collect citation text
+  const citationParts = [];
+  let currentY = targetStarter.transform[5];
+  
+  // Get items within reasonable range
+  const relevantItems = items.filter(item => 
+      item.transform[5] >= currentY && 
+      item.transform[5] < currentY + 100
+  );
+
+  let foundEnd = false;
+  for (const item of relevantItems) {
+      if (foundEnd) break;
+
+      // Stop at next citation starter
+      if (item.transform[5] > currentY && 
+          Math.abs(item.transform[4] - format.citationX) < format.margin &&
+          citationStarters.some(starter => starter === item)) {
+          foundEnd = true;
+          continue;
+      }
+
+      // Include if same line or indented continuation
+      if (Math.abs(item.transform[5] - currentY) < 5 || 
+          (item.transform[5] > currentY && 
+           item.transform[5] < currentY + 30 && 
+           item.transform[4] > format.citationX)) {
+          
+          citationParts.push(item);
+          
+          if (Math.abs(item.transform[5] - currentY) >= 5) {
+              currentY = item.transform[5];
+          }
+      }
+  }
+
+  return citationParts
+      .sort((a, b) => {
+          const yDiff = a.transform[5] - b.transform[5];
+          if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+          return yDiff;
+      })
+      .map(item => item.str)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+}
+
+async function addReferenceMarker(element, citationText) {
+    if (element.querySelector('.citation-marker-wrapper')) return;
+    
+    const wrapper = document.createElement('div');
+    wrapper.className = 'citation-marker-wrapper';
+    wrapper.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1000;
+    `;
+
+    const refMarker = document.createElement('div');
+    refMarker.className = 'citation-marker';
+    refMarker.style.cssText = `
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 0, 0, 0.2);
+        border-radius: 2px;
+    `;
+
+    const popup = document.createElement('div');
+    popup.className = 'citation-popup';
+    popup.style.cssText = `
+        position: fixed;
+        visibility: hidden;
+        background-color: white;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px;
+        width: 300px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        font-size: 12px;
+        color: black;
+        z-index: 999999;
+    `;
 
     // Add citation text
     const textDiv = document.createElement('div');
     textDiv.textContent = citationText;
     popup.appendChild(textDiv);
 
-    // Create container for all links
-    const linksDiv = document.createElement('div');
-    linksDiv.style.cssText = `
-        margin-top: 8px;
-        font-size: 11px;
-    `;
-
-    // Track if we've found any links
-    let foundLinks = false;
-
-    // Check for URLs in the citation text
+    // Add links for URLs and arXiv references
     const urlRegex = /(?:https?:\/\/[^\s,)]+)/g;
-    const urls = citationText.match(urlRegex);
+    const arxivRegex = /arXiv:(\d+\.\d+)/;
     
-    if (urls) {
-        urls.forEach(url => {
-            // Clean up URL (remove trailing periods, etc)
-            let cleanUrl = url.replace(/[.,]+$/, '');
-            
-            // Handle split URLs (like in your examples)
-            if (cleanUrl.endsWith(':')) {
-                const nextPart = citationText.split(cleanUrl)[1]?.trim().split(/\s/)[0];
-                if (nextPart) {
-                    cleanUrl = cleanUrl + nextPart;
-                }
-            }
+    const urls = citationText.match(urlRegex) || [];
+    const arxivMatch = citationText.match(arxivRegex);
 
+    if (urls.length > 0 || arxivMatch) {
+        const linksDiv = document.createElement('div');
+        linksDiv.style.cssText = `
+            margin-top: 8px;
+            font-size: 11px;
+        `;
+
+        // Add URL links
+        urls.forEach(url => {
+            const cleanUrl = url.replace(/[.,]+$/, '');
             const linkDiv = document.createElement('div');
             linkDiv.style.marginBottom = '4px';
             
@@ -242,14 +345,10 @@ async function createCitationPopup(dummy) {
             
             linkDiv.appendChild(link);
             linksDiv.appendChild(linkDiv);
-            foundLinks = true;
         });
-    }
 
-    // Check for arXiv number if we haven't found it in a full URL
-    if (!foundLinks || !urls?.some(url => url.includes('arxiv.org'))) {
-        const arxivMatch = citationText.match(/arXiv:(\d+\.\d+)/);
-        if (arxivMatch) {
+        // Add arXiv link if not already included in URLs
+        if (arxivMatch && !urls.some(url => url.includes('arxiv.org'))) {
             const arxivNumber = arxivMatch[1];
             const arxivUrl = `https://arxiv.org/pdf/${arxivNumber}`;
             
@@ -268,207 +367,166 @@ async function createCitationPopup(dummy) {
             
             linkDiv.appendChild(link);
             linksDiv.appendChild(linkDiv);
-            foundLinks = true;
         }
-    }
 
-    // Only append links div if we found any links
-    if (foundLinks) {
         popup.appendChild(linksDiv);
     }
-  
-      let isOverMarker = false;
-      let isOverPopup = false;
-  
-      const updatePopupVisibility = () => {
-          if (isOverMarker || isOverPopup) {
-              const markerRect = refMarker.getBoundingClientRect();
-              popup.style.top = `${markerRect.bottom + 5}px`;
-              popup.style.left = `${markerRect.left}px`;
-              popup.style.visibility = 'visible';
-          } else {
-              popup.style.visibility = 'hidden';
-          }
-      };
-  
-      refMarker.addEventListener('mouseenter', () => {
-          isOverMarker = true;
-          updatePopupVisibility();
-      });
-      
-      refMarker.addEventListener('mouseleave', (event) => {
-          isOverMarker = false;
-          setTimeout(() => {
-              updatePopupVisibility();
-          }, 100);
-      });
-  
-      popup.addEventListener('mouseenter', () => {
-          isOverPopup = true;
-          updatePopupVisibility();
-      });
-      
-      popup.addEventListener('mouseleave', (event) => {
-          if (!popup.contains(event.relatedTarget)) {
-              isOverPopup = false;
-              updatePopupVisibility();
-          }
-      });
-  
-      wrapper.appendChild(refMarker);
-      document.body.appendChild(popup);
-      element.appendChild(wrapper);
-  
-      // Clean up popup when wrapper is removed
-      const observer = new MutationObserver((mutations) => {
-          mutations.forEach((mutation) => {
-              mutation.removedNodes.forEach((node) => {
-                  if (node === wrapper || node.contains(wrapper)) {
-                      popup.remove();
-                      observer.disconnect();
-                  }
-              });
-          });
-      });
-  
-      observer.observe(element.parentNode, { childList: true, subtree: true });
-  }
 
-    async function extractCitationText(destPageNum, x, y, textContent) {
-      console.log("Extracting citation from coordinates:", {x, y});
-      
-      // Sort items top to bottom
-      const items = textContent.items.sort((a, b) => b.transform[5] - a.transform[5]);
-  
-      // Find the first citation starter below our target y-coordinate
-      const startItem = items.find(item => 
-          // Item is below our target y
-          item.transform[5] < y && 
-          // Item starts at the citation start x-coordinate
-          Math.abs(item.transform[4] - 70.866) < 1
-      );
-  
-      if (!startItem) {
-          console.log("Could not find start of citation");
-          return null;
-      }
-  
-      console.log("Found citation start:", {
-          text: startItem.str,
-          x: startItem.transform[4],
-          y: startItem.transform[5]
-      });
-  
-      // Collect all parts of this citation
-      const citationParts = [];
-      let currentY = startItem.transform[5];
-      
-      for (const item of items) {
-          // If this item is on the same line or is an indented continuation
-          if (Math.abs(item.transform[5] - currentY) < 5) {
-              citationParts.push(item);
-          }
-          // If this is an indented continuation on next line
-          else if (item.transform[5] < currentY && 
-                   item.transform[5] > currentY - 15 && 
-                   item.transform[4] > 70.866) {
-              citationParts.push(item);
-              currentY = item.transform[5];
-          }
-          // If we hit the next citation starter, stop
-          else if (item.transform[5] < currentY && 
-                   Math.abs(item.transform[4] - 70.866) < 1) {
-              break;
-          }
-      }
-  
-      const citationText = citationParts
-          .sort((a, b) => {
-              const yDiff = b.transform[5] - a.transform[5];
-              if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
-              return yDiff;
-          })
-          .map(item => item.str)
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-  
-      console.log("Extracted citation:", citationText);
-      return citationText;
-  }
+    let isOverMarker = false;
+    let isOverPopup = false;
 
-    async function processCitationsOnPage() {
-        if (processingTimeout) {
-            clearTimeout(processingTimeout);
+    const updatePopupVisibility = () => {
+        if (isOverMarker || isOverPopup) {
+            const markerRect = refMarker.getBoundingClientRect();
+            popup.style.top = `${markerRect.bottom + 5}px`;
+            popup.style.left = `${markerRect.left}px`;
+            popup.style.visibility = 'visible';
+        } else {
+            popup.style.visibility = 'hidden';
         }
-
-        processingTimeout = setTimeout(async () => {
-            const linkElements = document.querySelectorAll('[data-annotation-id]');
-            const citationLinks = Array.from(linkElements).filter(link => {
-                const href = link.querySelector('a')?.getAttribute('href');
-                const annotationId = link.getAttribute('data-annotation-id');
-                return href?.startsWith('#cite.') && 
-                       (!processedAnnotationIds.has(annotationId) || 
-                        !link.querySelector('.citation-marker-wrapper'));
-            });
-
-            if (citationLinks.length === 0) return;
-
-            console.log(`Processing ${citationLinks.length} citations`);
-
-            for (const link of citationLinks) {
-                try {
-                    const annotationId = link.getAttribute('data-annotation-id');
-                    
-                    if (citationTexts.has(annotationId)) {
-                        addReferenceMarker(link, citationTexts.get(annotationId));
-                        continue;
-                    }
-
-                    const href = link.querySelector('a').getAttribute('href');
-                    const citationId = href.substring(6);
-                    
-                    const destination = await doc.getDestination(`cite.${citationId}`);
-                    if (!destination) continue;
-
-                    const pageRef = destination[0];
-                    const destPageNum = await doc.getPageIndex(pageRef);
-                    const x = destination[2];
-                    const y = destination[3];
-
-                    const page = await doc.getPage(destPageNum + 1);
-                    const textContent = await page.getTextContent();
-
-                    const citationText = await extractCitationText(destPageNum, x, y, textContent);
-                    
-                    if (citationText) {
-                        citationTexts.set(annotationId, citationText);
-                        processedAnnotationIds.add(annotationId);
-                        addReferenceMarker(link, citationText);
-                    }
-                } catch (error) {
-                    console.error("Error processing citation:", error);
-                }
-            }
-        }, 100);
-    }
-
-    // Process citations when page is rendered
-    const pageRenderedCallback = () => {
-        processCitationsOnPage();
     };
 
-    window.removeEventListener('pagerendered', pageRenderedCallback);
-    window.addEventListener('pagerendered', pageRenderedCallback);
+    refMarker.addEventListener('mouseenter', () => {
+        isOverMarker = true;
+        updatePopupVisibility();
+    });
+    
+    refMarker.addEventListener('mouseleave', (event) => {
+        isOverMarker = false;
+        setTimeout(() => {
+            updatePopupVisibility();
+        }, 100);
+    });
 
-    // Initial processing
-    await processCitationsOnPage();
+    popup.addEventListener('mouseenter', () => {
+        isOverPopup = true;
+        updatePopupVisibility();
+    });
+    
+    popup.addEventListener('mouseleave', (event) => {
+        if (!popup.contains(event.relatedTarget)) {
+            isOverPopup = false;
+            updatePopupVisibility();
+        }
+    });
+
+    wrapper.appendChild(refMarker);
+    document.body.appendChild(popup);
+    element.appendChild(wrapper);
+
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.removedNodes.forEach((node) => {
+                if (node === wrapper || node.contains(wrapper)) {
+                    popup.remove();
+                    observer.disconnect();
+                }
+            });
+        });
+    });
+
+    observer.observe(element.parentNode, { childList: true, subtree: true });
 }
 
-// Clear the processed sets when document changes
+
+async function createCitationPopup(dummy) {
+  // Prevent concurrent processing
+  if (isProcessing) return;
+  isProcessing = true;
+
+  try {
+      if (!PDFViewerApplication?.pdfDocument) {
+          console.log("PDF viewer not ready yet");
+          return;
+      }
+
+      const doc = PDFViewerApplication.pdfDocument;
+
+      // Get only unprocessed citation links
+      const linkElements = document.querySelectorAll('[data-annotation-id]');
+      const citationLinks = Array.from(linkElements).filter(link => {
+          const href = link.querySelector('a')?.getAttribute('href');
+          const annotationId = link.getAttribute('data-annotation-id');
+          return href?.startsWith('#cite.') && !processedAnnotationIds.has(annotationId);
+      });
+
+      if (citationLinks.length === 0) {
+          return;
+      }
+
+      console.log(`Processing ${citationLinks.length} new citations`);
+
+      // Detect format only if needed
+      if (!detectedFormat) {
+          detectedFormat = await detectCitationFormat(doc, citationLinks[0]);
+          if (!detectedFormat) {
+              console.log("Could not detect citation format");
+              return;
+          }
+      }
+
+      // Process each new citation
+      for (const link of citationLinks) {
+          try {
+              const annotationId = link.getAttribute('data-annotation-id');
+              processedAnnotationIds.add(annotationId);  // Mark as processed immediately
+              
+              if (citationTexts.has(annotationId)) {
+                  addReferenceMarker(link, citationTexts.get(annotationId));
+                  continue;
+              }
+
+              const href = link.querySelector('a').getAttribute('href');
+              const citationId = href.substring(6);
+              
+              const destination = await doc.getDestination(`cite.${citationId}`);
+              if (!destination) continue;
+
+              const pageRef = destination[0];
+              const destPageNum = await doc.getPageIndex(pageRef);
+              const x = destination[2];
+              const y = destination[3];
+
+              const page = await doc.getPage(destPageNum + 1);
+              const textContent = await page.getTextContent();
+
+              const citationText = await extractCitationText(destPageNum, x, y, textContent, detectedFormat);
+              
+              if (citationText) {
+                  citationTexts.set(annotationId, citationText);
+                  await addReferenceMarker(link, citationText);
+              }
+          } catch (error) {
+              console.error("Error processing citation:", error);
+          }
+      }
+  } finally {
+      isProcessing = false;
+  }
+}
+
+
+
+// Modify event handling
+function setupCitationProcessing() {
+  let timeoutId = null;
+  
+  window.addEventListener('pagerendered', () => {
+      // Debounce the processing
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+          createCitationPopup(null);
+      }, 100);
+  });
+}
+
+
+// Reset when document changes
 window.addEventListener('documentload', () => {
-    processedAnnotationIds.clear();
-    citationTexts.clear();
+  processedAnnotationIds.clear();
+  citationTexts.clear();
+  detectedFormat = null;
+  isProcessing = false;
 });
 
 
