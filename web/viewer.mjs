@@ -193,35 +193,89 @@ async function createCitationPopup(dummy) {
           z-index: 999999;
       `;
   
-      // Rest of the popup content code...
-      const textDiv = document.createElement('div');
-      textDiv.textContent = citationText;
-      popup.appendChild(textDiv);
-  
-      const arxivMatch = citationText.match(/arXiv:(\d+\.\d+)/);
-      if (arxivMatch) {
-          const arxivNumber = arxivMatch[1];
-          const arxivUrl = `https://arxiv.org/pdf/${arxivNumber}`;
-          
-          const linkDiv = document.createElement('div');
-          linkDiv.style.cssText = `
-              margin-top: 8px;
-              font-size: 11px;
-          `;
-          
-          const link = document.createElement('a');
-          link.href = arxivUrl;
-          link.target = "_blank";
-          link.textContent = "Open PDF";
-          link.style.cssText = `
-              color: blue;
-              text-decoration: underline;
-              cursor: pointer;
-          `;
-          
-          linkDiv.appendChild(link);
-          popup.appendChild(linkDiv);
-      }
+
+
+    // Add citation text
+    const textDiv = document.createElement('div');
+    textDiv.textContent = citationText;
+    popup.appendChild(textDiv);
+
+    // Create container for all links
+    const linksDiv = document.createElement('div');
+    linksDiv.style.cssText = `
+        margin-top: 8px;
+        font-size: 11px;
+    `;
+
+    // Track if we've found any links
+    let foundLinks = false;
+
+    // Check for URLs in the citation text
+    const urlRegex = /(?:https?:\/\/[^\s,)]+)/g;
+    const urls = citationText.match(urlRegex);
+    
+    if (urls) {
+        urls.forEach(url => {
+            // Clean up URL (remove trailing periods, etc)
+            let cleanUrl = url.replace(/[.,]+$/, '');
+            
+            // Handle split URLs (like in your examples)
+            if (cleanUrl.endsWith(':')) {
+                const nextPart = citationText.split(cleanUrl)[1]?.trim().split(/\s/)[0];
+                if (nextPart) {
+                    cleanUrl = cleanUrl + nextPart;
+                }
+            }
+
+            const linkDiv = document.createElement('div');
+            linkDiv.style.marginBottom = '4px';
+            
+            const link = document.createElement('a');
+            link.href = cleanUrl;
+            link.target = "_blank";
+            link.textContent = "Open Link";
+            link.style.cssText = `
+                color: blue;
+                text-decoration: underline;
+                cursor: pointer;
+            `;
+            
+            linkDiv.appendChild(link);
+            linksDiv.appendChild(linkDiv);
+            foundLinks = true;
+        });
+    }
+
+    // Check for arXiv number if we haven't found it in a full URL
+    if (!foundLinks || !urls?.some(url => url.includes('arxiv.org'))) {
+        const arxivMatch = citationText.match(/arXiv:(\d+\.\d+)/);
+        if (arxivMatch) {
+            const arxivNumber = arxivMatch[1];
+            const arxivUrl = `https://arxiv.org/pdf/${arxivNumber}`;
+            
+            const linkDiv = document.createElement('div');
+            linkDiv.style.marginBottom = '4px';
+            
+            const link = document.createElement('a');
+            link.href = arxivUrl;
+            link.target = "_blank";
+            link.textContent = "Open PDF";
+            link.style.cssText = `
+                color: blue;
+                text-decoration: underline;
+                cursor: pointer;
+            `;
+            
+            linkDiv.appendChild(link);
+            linksDiv.appendChild(linkDiv);
+            foundLinks = true;
+        }
+    }
+
+    // Only append links div if we found any links
+    if (foundLinks) {
+        popup.appendChild(linksDiv);
+    }
   
       let isOverMarker = false;
       let isOverPopup = false;
