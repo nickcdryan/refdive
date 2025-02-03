@@ -153,27 +153,32 @@ async function createCitationPopup(dummy) {
     async function addReferenceMarker(element, citationText) {
       if (element.querySelector('.citation-marker-wrapper')) return;
       
+      // Get the rect dimensions from the annotation
+      const linkRect = element.getBoundingClientRect();
+      
       const wrapper = document.createElement('div');
       wrapper.className = 'citation-marker-wrapper';
       wrapper.style.cssText = `
           position: absolute;
           left: 0;
           top: 0;
+          width: 100%;
+          height: 100%;
           z-index: 1000;
       `;
   
       const refMarker = document.createElement('div');
       refMarker.className = 'citation-marker';
       refMarker.style.cssText = `
-          width: 20px;
-          height: 20px;
-          background-color: rgba(255, 0, 0, 0.5);
-          border-radius: 50%;
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(255, 0, 0, 0.2);
+          border-radius: 2px;
       `;
   
       const popup = document.createElement('div');
       popup.className = 'citation-popup';
-      // Position popup fixed relative to viewport
       popup.style.cssText = `
           position: fixed;
           visibility: hidden;
@@ -188,12 +193,11 @@ async function createCitationPopup(dummy) {
           z-index: 999999;
       `;
   
-      // Add citation text
+      // Rest of the popup content code...
       const textDiv = document.createElement('div');
       textDiv.textContent = citationText;
       popup.appendChild(textDiv);
   
-      // Check for arXiv number
       const arxivMatch = citationText.match(/arXiv:(\d+\.\d+)/);
       if (arxivMatch) {
           const arxivNumber = arxivMatch[1];
@@ -224,7 +228,6 @@ async function createCitationPopup(dummy) {
   
       const updatePopupVisibility = () => {
           if (isOverMarker || isOverPopup) {
-              // Position popup near the marker
               const markerRect = refMarker.getBoundingClientRect();
               popup.style.top = `${markerRect.bottom + 5}px`;
               popup.style.left = `${markerRect.left}px`;
@@ -259,7 +262,6 @@ async function createCitationPopup(dummy) {
       });
   
       wrapper.appendChild(refMarker);
-      // Add popup to document body instead of wrapper
       document.body.appendChild(popup);
       element.appendChild(wrapper);
   
