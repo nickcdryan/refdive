@@ -220,53 +220,67 @@ async function extractCitationText(destPageNum, x, y, textContent, format) {
 
   if (!targetStarter) return null;
 
-  // Collect citation text
-  const citationParts = [];
-  let currentY = targetStarter.transform[5];
-  
-  // Get items within reasonable range
-  const relevantItems = items.filter(item => 
-      item.transform[5] >= currentY && 
-      item.transform[5] < currentY + 100
-  );
+// Collect citation text
+const citationParts = [];
+let currentY = targetStarter.transform[5];
 
-  let foundEnd = false;
-  for (const item of relevantItems) {
-      if (foundEnd) break;
+console.log("Target citation starts at y:", currentY);
 
-      // Stop at next citation starter
-      if (item.transform[5] > currentY && 
-          Math.abs(item.transform[4] - format.citationX) < format.margin &&
-          citationStarters.some(starter => starter === item)) {
-          foundEnd = true;
-          continue;
-      }
+// Get all text from currentY down 200 units, sorted top to bottom
+const relevantItems = items
+   .filter(item => {
+       const withinRange = item.transform[5] <= currentY + 2 && 
+                          item.transform[5] >= currentY - 200;
+       
+       if (withinRange) {
+           console.log("Found text at y:", item.transform[5], "with content:", item.str);
+       }
+       
+       return withinRange;
+   })
+   .sort((a, b) => {
+       const yDiff = b.transform[5] - a.transform[5];
+       if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+       return yDiff;
+   });
 
-      // Include if same line or indented continuation
-      if (Math.abs(item.transform[5] - currentY) < 5 || 
-          (item.transform[5] > currentY && 
-           item.transform[5] < currentY + 30 && 
-           item.transform[4] > format.citationX)) {
-          
-          citationParts.push(item);
-          
-          if (Math.abs(item.transform[5] - currentY) >= 5) {
-              currentY = item.transform[5];
-          }
-      }
-  }
+console.log("Sorted items y-coordinates:");
+relevantItems.forEach(item => {
+    console.log("y:", item.transform[5], "text:", item.str);
+});
 
-  return citationParts
-      .sort((a, b) => {
-          const yDiff = a.transform[5] - b.transform[5];
-          if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
-          return yDiff;
-      })
-      .map(item => item.str)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+// Process items line by line
+let isFirstLine = true;
+let foundYear = false;
+
+for (const item of relevantItems) {
+   if (foundYear && !isFirstLine && Math.abs(item.transform[4] - format.citationX) < format.margin) {
+       console.log("Breaking at y:", item.transform[5], "text:", item.str);
+       break;
+   }
+
+   citationParts.push(item);
+   console.log("Added to citation y:", item.transform[5], "text:", item.str);
+
+   if (item.str.match(/\b(19|20)\d{2}[a-z]?\b|\b(19|20)\d{2}\.?/)) {
+       console.log("Found year at y:", item.transform[5]);
+       foundYear = true;
+   }
+
+   isFirstLine = false;
 }
+
+return citationParts
+   .sort((a, b) => {
+       const yDiff = b.transform[5] - a.transform[5];
+       if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+       return yDiff;
+   })
+   .map(item => item.str)
+   .join(' ')
+   .replace(/\s+/g, ' ')
+   .trim();
+  }
 
 async function addReferenceMarker(element, citationText) {
     if (element.querySelector('.citation-marker-wrapper')) return;
@@ -308,9 +322,100 @@ async function addReferenceMarker(element, citationText) {
         z-index: 999999;
     `;
 
-    // Add citation text
+    // First add the splitCitation function definition
+    const splitCitation = (citationText) => {
+      // Helper to check if a period is followed by another period soon after
+      const hasNearbyPeriod = (index, text, distance = 10) => {
+          const nextSection = text.substring(index + 1, index + distance);
+          return nextSection.includes('.');
+      };
+  
+      // Helper to check if we've found the real end of authors (not a middle initial)
+      const isEndOfAuthors = (index, text) => {
+          const nextChar = text[index + 1];
+          if (!nextChar) return false;
+          
+          // If this period has another period nearby, it's probably a middle initial
+          if (hasNearbyPeriod(index, text)) {
+              return false;
+          }
+          
+          if (nextChar === ' ' && text[index + 2] && text[index + 2].match(/[A-Z]/)) {
+              const previousText = text.substring(0, index);
+              return !previousText.endsWith(',') && !previousText.endsWith(' and ');
+          }
+          return false;
+      };
+  
+      // Case 1: Multiple authors ending with "et al."
+      const etAlMatch = citationText.match(/et\s+al\.\s+[A-Z]/);
+      if (etAlMatch) {
+          const splitIndex = citationText.indexOf('.', etAlMatch.index) + 1;
+          return {
+              authors: citationText.substring(0, splitIndex).trim(),
+              rest: citationText.substring(splitIndex).trim()
+          };
+      }
+  
+      // Case 2: Multiple authors with "and" before last author
+      const andMatch = citationText.match(/,?\s+and\s+[A-Z][^\.]+\./);
+      if (andMatch) {
+          // Find the real end period after "and" by checking each period we encounter
+          let startIndex = andMatch.index;
+          let currentIndex = citationText.indexOf('.', startIndex);
+          
+          while (currentIndex !== -1) {
+              if (!hasNearbyPeriod(currentIndex, citationText)) {
+                  // We found a period that isn't followed by another period soon
+                  if (isEndOfAuthors(currentIndex, citationText)) {
+                      return {
+                          authors: citationText.substring(0, currentIndex + 1).trim(),
+                          rest: citationText.substring(currentIndex + 1).trim()
+                      };
+                  }
+              }
+              // Look for next period
+              currentIndex = citationText.indexOf('.', currentIndex + 1);
+          }
+      }
+  
+      // Case 3: Single author (with or without period)
+      const singleAuthorMatch = citationText.match(/^([A-Z][^\.]+|[A-Z]\.\s*[A-Z][^\.]+)\./);
+      if (singleAuthorMatch) {
+          // Similarly, find the real end period
+          let currentIndex = singleAuthorMatch[0].length - 1;
+          while (currentIndex !== -1) {
+              if (!hasNearbyPeriod(currentIndex, citationText)) {
+                  if (isEndOfAuthors(currentIndex, citationText)) {
+                      return {
+                          authors: citationText.substring(0, currentIndex + 1).trim(),
+                          rest: citationText.substring(currentIndex + 1).trim()
+                      };
+                  }
+              }
+              currentIndex = citationText.indexOf('.', currentIndex + 1);
+          }
+      }
+  
+      return null;
+    };
+
+    // Then create the text div with the split citation
     const textDiv = document.createElement('div');
-    textDiv.textContent = citationText;
+    const split = splitCitation(citationText);
+    if (split) {
+      const authorsDiv = document.createElement('div');
+      authorsDiv.textContent = split.authors;
+      authorsDiv.style.marginBottom = '8px';
+      
+      const restDiv = document.createElement('div');
+      restDiv.textContent = split.rest;
+      
+      textDiv.appendChild(authorsDiv);
+      textDiv.appendChild(restDiv);
+    } else {
+      textDiv.textContent = citationText;
+    }
     popup.appendChild(textDiv);
 
     // Add links for URLs and arXiv references
@@ -542,6 +647,7 @@ function addCitationPopups() {
     }
   });
 }
+
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {
   const debounceScroll = function (evt) {
     if (rAF) {
