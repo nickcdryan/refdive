@@ -450,6 +450,7 @@ async function addReferenceMarker(element, citationText) {
         const titleDiv = document.createElement('div');
         titleDiv.textContent = restParts[0] + '.';
         titleDiv.style.marginBottom = '8px';
+        titleDiv.style.fontWeight = 'bold';
         
         // Journal info section
         const journalDiv = document.createElement('div');

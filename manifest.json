@@ -1,5 +1,10 @@
 {
   "manifest_version": 3,
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "name": "RefDive",
   "version": "1.0",
   "description": "PDF viewer with reference diving capabilities",
