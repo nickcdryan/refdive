@@ -271,22 +271,49 @@ relevantItems.forEach(item => {
 // Process items line by line
 let isFirstLine = true;
 let foundYear = false;
+let collectingURL = false;
+let lastLine = '';
 
 for (const item of relevantItems) {
-   if (foundYear && !isFirstLine && Math.abs(item.transform[4] - format.citationX) < format.margin) {
-       console.log("Breaking at y:", item.transform[5], "text:", item.str);
-       break;
-   }
+  // Check if we're starting a URL
+  if (foundYear && 
+      (item.str.includes('URL') || 
+       (collectingURL && !lastLine.endsWith('.')))) {
+      collectingURL = true;
+      lastLine = item.str;
+      citationParts.push(item);
+      console.log("Added URL part:", item.str);
+      continue;
+  }
 
-   citationParts.push(item);
-   console.log("Added to citation y:", item.transform[5], "text:", item.str);
+  // Only break if:
+  // 1. We've found the year AND
+  // 2. We're not collecting a URL AND
+  // 3. We hit an unindented line AND
+  // 4. Last line ended with a period
+  if (foundYear && 
+      !collectingURL && 
+      !isFirstLine && 
+      Math.abs(item.transform[4] - format.citationX) < format.margin &&
+      lastLine.endsWith('.')) {
+      break;
+  }
 
-   if (item.str.match(/\b(19|20)\d{2}[a-z]?\b|\b(19|20)\d{2}\.?/)) {
-       console.log("Found year at y:", item.transform[5]);
-       foundYear = true;
-   }
+  citationParts.push(item);
+  lastLine = item.str;
 
-   isFirstLine = false;
+  // Check for year
+  if (item.str.match(/\b(19|20)\d{2}[a-z]?\b|\b(19|20)\d{2}\.?/)) {
+      console.log("Found year at y:", item.transform[5]);
+      foundYear = true;
+  }
+
+  // Stop collecting URL only if we have a complete URL ending in period
+  if (collectingURL && item.str.endsWith('.')) {
+      collectingURL = false;
+  }
+
+  isFirstLine = false;
 }
 
 return citationParts
