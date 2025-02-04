@@ -423,17 +423,28 @@ async function addReferenceMarker(element, citationText) {
     const textDiv = document.createElement('div');
     const split = splitCitation(citationText);
     if (split) {
-      const authorsDiv = document.createElement('div');
-      authorsDiv.textContent = split.authors;
-      authorsDiv.style.marginBottom = '8px';
-      
-      const restDiv = document.createElement('div');
-      restDiv.textContent = split.rest;
-      
-      textDiv.appendChild(authorsDiv);
-      textDiv.appendChild(restDiv);
+        // Authors section
+        const authorsDiv = document.createElement('div');
+        authorsDiv.textContent = split.authors;
+        authorsDiv.style.marginBottom = '8px';
+        
+        // Split the rest into title and journal info at first period
+        const restParts = split.rest.split(/\.(.+)/);
+        
+        // Title section (add the period back)
+        const titleDiv = document.createElement('div');
+        titleDiv.textContent = restParts[0] + '.';
+        titleDiv.style.marginBottom = '8px';
+        
+        // Journal info section
+        const journalDiv = document.createElement('div');
+        journalDiv.textContent = restParts[1] ? restParts[1].trim() : '';
+        
+        textDiv.appendChild(authorsDiv);
+        textDiv.appendChild(titleDiv);
+        textDiv.appendChild(journalDiv);
     } else {
-      textDiv.textContent = citationText;
+        textDiv.textContent = citationText;
     }
     popup.appendChild(textDiv);
 
