@@ -140,6 +140,25 @@ let citationTexts = new Map();
 let detectedFormat = null;
 let isProcessing = false;  // Add processing lock
 
+
+// Add this function
+function restoreMissingMarkers() {
+  citationTexts.forEach((text, annotationId) => {
+      const element = document.querySelector(`[data-annotation-id="${annotationId}"]`);
+      if (element && !element.querySelector('.citation-marker-wrapper')) {
+          addReferenceMarker(element, text);
+      }
+  });
+}
+
+// Add this interval
+setInterval(restoreMissingMarkers, 1000);
+
+// And add this to the scroll handler
+window.addEventListener('scroll', () => {
+  requestAnimationFrame(restoreMissingMarkers);
+}, { passive: true });
+
 async function detectCitationFormat(doc, firstLink) {
     if (detectedFormat) return detectedFormat;
 
