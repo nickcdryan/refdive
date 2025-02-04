@@ -475,6 +475,32 @@ async function addReferenceMarker(element, citationText) {
         }
 
         popup.appendChild(linksDiv);
+      } else {
+        // No direct links found, add Google search link
+        const linksDiv = document.createElement('div');
+        linksDiv.style.cssText = `
+            margin-top: 8px;
+            font-size: 11px;
+        `;
+        
+        const linkDiv = document.createElement('div');
+        linkDiv.style.marginBottom = '4px';
+        
+        const link = document.createElement('a');
+        // Create Google search URL with citation text as query
+        const searchQuery = encodeURIComponent(citationText);
+        link.href = `https://www.google.com/search?q=${searchQuery}`;
+        link.target = "_blank";
+        link.textContent = "Search on Google";
+        link.style.cssText = `
+            color: blue;
+            text-decoration: underline;
+            cursor: pointer;
+        `;
+        
+        linkDiv.appendChild(link);
+        linksDiv.appendChild(linkDiv);
+        popup.appendChild(linksDiv);
     }
 
     let isOverMarker = false;
