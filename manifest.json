@@ -4,8 +4,13 @@
   "version": "1.0",
   "description": "PDF viewer with reference diving capabilities",
   "permissions": [
-    "webRequest"
+    "webRequest",
+    "declarativeNetRequest"
   ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "host_permissions": [
     "*://*/*.pdf",
     "*://arxiv.org/*",

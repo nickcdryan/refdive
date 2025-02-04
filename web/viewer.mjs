@@ -272,43 +272,31 @@ relevantItems.forEach(item => {
 let isFirstLine = true;
 let foundYear = false;
 let collectingURL = false;
-let lastLine = '';
 
 for (const item of relevantItems) {
-  // Check if we're starting a URL
-  if (foundYear && 
-      (item.str.includes('URL') || 
-       (collectingURL && !lastLine.endsWith('.')))) {
+  // Check if we should start collecting URL
+  if (foundYear && item.str.includes('URL')) {
       collectingURL = true;
-      lastLine = item.str;
-      citationParts.push(item);
-      console.log("Added URL part:", item.str);
-      continue;
   }
 
-  // Only break if:
-  // 1. We've found the year AND
-  // 2. We're not collecting a URL AND
-  // 3. We hit an unindented line AND
-  // 4. Last line ended with a period
+  // Only break if we've found the year AND we're not collecting URL
+  // AND we hit an unindented line
   if (foundYear && 
       !collectingURL && 
       !isFirstLine && 
-      Math.abs(item.transform[4] - format.citationX) < format.margin &&
-      lastLine.endsWith('.')) {
+      Math.abs(item.transform[4] - format.citationX) < format.margin) {
+      console.log("Breaking at y:", item.transform[5], "text:", item.str);
       break;
   }
 
   citationParts.push(item);
-  lastLine = item.str;
 
   // Check for year
   if (item.str.match(/\b(19|20)\d{2}[a-z]?\b|\b(19|20)\d{2}\.?/)) {
-      console.log("Found year at y:", item.transform[5]);
       foundYear = true;
   }
 
-  // Stop collecting URL only if we have a complete URL ending in period
+  // If collecting URL, check if we've reached its end (final period)
   if (collectingURL && item.str.endsWith('.')) {
       collectingURL = false;
   }
@@ -371,7 +359,7 @@ async function addReferenceMarker(element, citationText) {
     // First add the splitCitation function definition
     const splitCitation = (citationText) => {
       // Helper to check if a period is followed by another period soon after
-      const hasNearbyPeriod = (index, text, distance = 10) => {
+      const hasNearbyPeriod = (index, text, distance = 15) => {
           const nextSection = text.substring(index + 1, index + distance);
           return nextSection.includes('.');
       };
