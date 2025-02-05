@@ -210,7 +210,6 @@ async function detectPageLayout(page) {
   };
 }
 
-// Two-column format detection
 async function detectTwoColumnCitationFormat(doc, citationLinks, layout) {
   try {
       const sampleSize = Math.min(5, citationLinks.length);
@@ -218,26 +217,7 @@ async function detectTwoColumnCitationFormat(doc, citationLinks, layout) {
 
       console.log('Sampling citation destinations to determine column positions...');
 
-      // Get the first citation to detect format
-      const firstLink = citationLinks[0];
-      const firstHref = firstLink.querySelector('a').getAttribute('href');
-      const firstCitationId = firstHref.substring(6);
-      const firstDestination = await doc.getDestination(`cite.${firstCitationId}`);
-      
-      if (!firstDestination) return null;
-
-      const firstPageRef = firstDestination[0];
-      const firstDestPageNum = await doc.getPageIndex(firstPageRef);
-      const page = await doc.getPage(firstDestPageNum + 1);
-      const textContent = await page.getTextContent();
-      
-      // Find citation start to determine format, same as single-column
-      const citationStart = textContent.items.find(item => 
-          Math.abs(item.transform[5] - firstDestination[3]) < 20 &&
-          (item.str.match(/^\[\d+\]/) || item.str.match(/^[A-Z][a-zA-Z\s,]/))
-      );
-
-      // Now collect x-coordinates from sample citations
+      // First collect x-coordinates to determine columns
       for (let i = 0; i < sampleSize; i++) {
           const link = citationLinks[i];
           const href = link.querySelector('a').getAttribute('href');
@@ -275,12 +255,48 @@ async function detectTwoColumnCitationFormat(doc, citationLinks, layout) {
       }
 
       const largestGap = gaps.reduce((max, gap) => gap.gap > max.gap ? gap : max, gaps[0]);
+      const leftColumnX = Math.round(largestGap.start);
+      const rightColumnX = Math.round(largestGap.end);
+
+      // Now that we have column boundaries, let's check citation format
+      // Don't grab the first link (sometimes it's not a citation but some header link)
+      const firstLink = citationLinks[5];
+      const firstHref = firstLink.querySelector('a').getAttribute('href');
+      const firstCitationId = firstHref.substring(6);
+      const firstDestination = await doc.getDestination(`cite.${firstCitationId}`);
       
+      if (!firstDestination) return null;
+
+      const firstPageRef = firstDestination[0];
+      const firstDestPageNum = await doc.getPageIndex(firstPageRef);
+      const page = await doc.getPage(firstDestPageNum + 1);
+      const textContent = await page.getTextContent();
+      
+
+
+      // Find citation start in the correct column
+      const citationStart = textContent.items.find(item => 
+          Math.abs(item.transform[5] - firstDestination[3]) < 20 &&
+          (item.str.match(/^\[\d+\]/) || item.str.match(/^[A-Z][a-zA-Z\s,]/))
+      );
+
+      if (!citationStart) {
+          console.log('Could not find citation start');
+          return null;
+      }
+
+      console.log('Found citation start:', {
+          text: citationStart.str,
+          x: citationStart.transform[4],
+          y: citationStart.transform[5],
+          isNumbered: !!citationStart.str.match(/^\[\d+\]/)
+      });
+  
       return {
-          leftColumnX: Math.round(largestGap.start),
-          rightColumnX: Math.round(largestGap.end),
+          leftColumnX,
+          rightColumnX,
           margin: 15,
-          hasNumbers: citationStart ? !!citationStart.str.match(/^\[\d+\]/) : true,
+          hasNumbers: !!citationStart.str.match(/^\[\d+\]/),
           columnDivider: layout.columnDivider
       };
   } catch (error) {
@@ -289,13 +305,13 @@ async function detectTwoColumnCitationFormat(doc, citationLinks, layout) {
   }
 }
 
-// Two-column text extraction
 async function extractTwoColumnCitationText(destPageNum, x, y, textContent, format) {
   // Determine column and set boundaries
   const isRightColumn = x >= format.rightColumnX;
   const columnStart = isRightColumn ? format.rightColumnX : format.leftColumnX;
   const columnEnd = isRightColumn ? Infinity : format.rightColumnX;
 
+  console.log('Starting extraction with format:', format);
   console.log('Extracting citation text:', {
       x,
       y,
@@ -312,6 +328,13 @@ async function extractTwoColumnCitationText(destPageNum, x, y, textContent, form
       return itemX >= columnStart && itemX < columnEnd;
   });
 
+  console.log('Found items in column:', columnItems.length);
+  console.log('First few items:', columnItems.slice(0, 3).map(item => ({
+      text: item.str,
+      x: item.transform[4],
+      y: item.transform[5]
+  })));
+
   // Sort items by y position and then x position within each line
   const items = columnItems.sort((a, b) => {
       const yDiff = b.transform[5] - a.transform[5];
@@ -319,18 +342,28 @@ async function extractTwoColumnCitationText(destPageNum, x, y, textContent, form
       return yDiff;
   });
 
-  // Find citation starter at the target y-coordinate
+  // Find items near our target y-coordinate
   const relevantItems = items.filter(item => 
       item.transform[5] <= y + 5 && 
       item.transform[5] >= y - 15
   );
+
+  console.log('Found relevant items at target y:', {
+      targetY: y,
+      items: relevantItems.map(item => ({
+          text: item.str,
+          x: item.transform[4],
+          y: item.transform[5],
+          distanceFromStart: Math.abs(item.transform[4] - columnStart)
+      }))
+  });
 
   if (relevantItems.length === 0) {
       console.log('Could not find text at target y-coordinate:', y);
       return null;
   }
 
-  // Find the citation starter using the format we detected
+  // Find the citation starter
   let citationStarter = null;
   if (format.hasNumbers) {
       citationStarter = relevantItems.find(item =>
@@ -338,12 +371,26 @@ async function extractTwoColumnCitationText(destPageNum, x, y, textContent, form
           item.str.match(/^\d+\./) ||
           item.str.match(/^\(\d+\)/)
       );
+      console.log('Looking for numbered citation:', {
+          found: !!citationStarter,
+          starterText: citationStarter?.str,
+          distance: citationStarter ? Math.abs(citationStarter.transform[4] - columnStart) : null
+      });
   } else {
-      // For author style, need to check the start of each line
       const sortedByX = relevantItems.sort((a, b) => a.transform[4] - b.transform[4]);
       citationStarter = sortedByX.find(item =>
           item.str.match(/^[A-Z][a-zA-Z\s,]/)
       );
+      console.log('Looking for author citation:', {
+          found: !!citationStarter,
+          starterText: citationStarter?.str,
+          distance: citationStarter ? Math.abs(citationStarter.transform[4] - columnStart) : null
+      });
+  }
+
+  if (!citationStarter) {
+      console.log('Could not find citation starter in text:', relevantItems.map(i => i.str));
+      return null;
   }
 
   if (!citationStarter) {
