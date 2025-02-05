@@ -159,6 +159,233 @@ window.addEventListener('scroll', () => {
   requestAnimationFrame(restoreMissingMarkers);
 }, { passive: true });
 
+
+
+
+
+// Layout detection and parsing functions
+async function detectPageLayout(page) {
+  const textContent = await page.getTextContent();
+  const items = textContent.items;
+  
+  // Create a frequency map of x-coordinates
+  const xCoordFreq = new Map();
+  items.forEach(item => {
+      const x = Math.round(item.transform[4]);
+      xCoordFreq.set(x, (xCoordFreq.get(x) || 0) + 1);
+  });
+
+  // Sort x-coordinates by frequency
+  const sortedCoords = Array.from(xCoordFreq.entries())
+      .sort((a, b) => b[1] - a[1])
+      .filter(([x, freq]) => freq > items.length * 0.05); // Filter out rare x-coordinates
+
+  // If we have two dominant x-coordinates with significant gap, it's likely two columns
+  if (sortedCoords.length >= 2) {
+      const coords = sortedCoords.map(([x]) => x).sort((a, b) => a - b);
+      const gaps = [];
+      
+      for (let i = 1; i < coords.length; i++) {
+          gaps.push(coords[i] - coords[i-1]);
+      }
+
+      const maxGap = Math.max(...gaps);
+      const isTwoColumn = maxGap > 100; // Significant gap indicates two columns
+
+      if (isTwoColumn) {
+          const midPoint = coords[gaps.indexOf(maxGap)] + maxGap/2;
+          return {
+              type: 'two-column',
+              leftBoundary: coords[0] - 10,
+              rightBoundary: coords[coords.length - 1] + 100,
+              columnDivider: midPoint
+          };
+      }
+  }
+
+  return {
+      type: 'single-column',
+      leftBoundary: sortedCoords[0][0] - 10,
+      rightBoundary: sortedCoords[sortedCoords.length - 1][0] + 100
+  };
+}
+
+// Two-column format detection
+async function detectTwoColumnCitationFormat(doc, citationLinks, layout) {
+  try {
+      const sampleSize = Math.min(5, citationLinks.length);
+      const xCoordinates = [];
+
+      console.log('Sampling citation destinations to determine column positions...');
+
+      for (let i = 0; i < sampleSize; i++) {
+          const link = citationLinks[i];
+          const href = link.querySelector('a').getAttribute('href');
+          const citationId = href.substring(6);
+          
+          const destination = await doc.getDestination(`cite.${citationId}`);
+          if (!destination) continue;
+
+          const x = destination[2];
+          xCoordinates.push(x);
+          
+          console.log(`Citation ${citationId} x-coordinate:`, x);
+      }
+
+      const sortedX = xCoordinates.sort((a, b) => a - b);
+      
+      let gaps = [];
+      for (let i = 1; i < sortedX.length; i++) {
+          const gap = sortedX[i] - sortedX[i-1];
+          if (gap > 50) {
+              gaps.push({
+                  start: sortedX[i-1],
+                  end: sortedX[i],
+                  gap: gap
+              });
+          }
+      }
+
+      console.log('Found x-coordinates:', sortedX);
+      console.log('Column gaps:', gaps);
+
+      if (gaps.length === 0) {
+          console.log('Could not determine distinct columns from citations');
+          return null;
+      }
+
+      const largestGap = gaps.reduce((max, gap) => gap.gap > max.gap ? gap : max, gaps[0]);
+      
+      return {
+          leftColumnX: Math.round(largestGap.start),
+          rightColumnX: Math.round(largestGap.end),
+          margin: 15,
+          hasNumbers: true,
+          columnDivider: layout.columnDivider
+      };
+  } catch (error) {
+      console.error("Error detecting two-column citation format:", error);
+      return null;
+  }
+}
+
+// Two-column text extraction
+async function extractTwoColumnCitationText(destPageNum, x, y, textContent, format) {
+  // Determine column and set boundaries
+  const isRightColumn = x >= format.rightColumnX;
+  const columnStart = isRightColumn ? format.rightColumnX : format.leftColumnX;
+  const columnEnd = isRightColumn ? Infinity : format.rightColumnX;
+
+  console.log('Extracting citation text:', {
+      x,
+      y,
+      isRightColumn,
+      columnBoundaries: {
+          start: columnStart,
+          end: columnEnd
+      }
+  });
+
+  // Filter items to only include those in the correct column
+  const columnItems = textContent.items.filter(item => {
+      const itemX = item.transform[4];
+      return itemX >= columnStart && itemX < columnEnd;
+  });
+
+  // Sort items by y position and then x position within each line
+  const items = columnItems.sort((a, b) => {
+      const yDiff = b.transform[5] - a.transform[5];
+      if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+      return yDiff;
+  });
+
+  // Find citation starter at the target y-coordinate
+  const relevantItems = items.filter(item => 
+      item.transform[5] <= y + 5 && 
+      item.transform[5] >= y - 15
+  );
+
+  if (relevantItems.length === 0) {
+      console.log('Could not find text at target y-coordinate:', y);
+      return null;
+  }
+
+  // Find the citation starter (number) in the relevant items
+  const citationStarter = relevantItems.find(item =>
+      item.str.match(/^\[\d+\]/) ||
+      item.str.match(/^\d+\./) ||
+      item.str.match(/^\(\d+\)/)
+  );
+
+  if (!citationStarter) {
+      console.log('Could not find citation starter in text:', relevantItems.map(i => i.str));
+      return null;
+  }
+
+  // Collect citation text
+  const citationParts = [];
+  let currentY = citationStarter.transform[5];
+  let foundYear = false;
+  let collectingURL = false;
+  let isFirstLine = true;
+
+  // Get text items starting from the citation
+  const citationItems = items.filter(item => 
+      item.transform[5] <= currentY + 2 && 
+      item.transform[5] >= currentY - 200
+  );
+
+  // Process items line by line
+  for (const item of citationItems) {
+      // Break if we hit the next citation (unindented line after finding year)
+      if (foundYear && 
+          !collectingURL && 
+          !isFirstLine && 
+          Math.abs(item.transform[4] - columnStart) < 5) {
+          console.log('Breaking at:', item.str);
+          break;
+      }
+
+      if (foundYear && item.str.includes('URL')) {
+          collectingURL = true;
+      }
+
+      citationParts.push(item);
+
+      // Check for year to help determine end of citation
+      if (item.str.match(/\b(19|20)\d{2}[a-z]?\b|\b(19|20)\d{2}\.?/)) {
+          foundYear = true;
+      }
+
+      if (collectingURL && item.str.endsWith('.')) {
+          collectingURL = false;
+      }
+
+      isFirstLine = false;
+  }
+
+  // Sort and join the citation parts
+  const citationText = citationParts
+      .sort((a, b) => {
+          const yDiff = b.transform[5] - a.transform[5];
+          if (Math.abs(yDiff) < 5) return a.transform[4] - b.transform[4];
+          return yDiff;
+      })
+      .map(item => item.str)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  console.log('Extracted citation text:', citationText);
+  return citationText;
+}
+
+
+
+
+
+
+
 async function detectCitationFormat(doc, firstLink) {
     if (detectedFormat) return detectedFormat;
 
@@ -243,7 +470,7 @@ async function extractCitationText(destPageNum, x, y, textContent, format) {
 const citationParts = [];
 let currentY = targetStarter.transform[5];
 
-console.log("Target citation starts at y:", currentY);
+//console.log("Target citation starts at y:", currentY);
 
 // Get all text from currentY down 200 units, sorted top to bottom
 const relevantItems = items
@@ -252,7 +479,7 @@ const relevantItems = items
                           item.transform[5] >= currentY - 200;
        
        if (withinRange) {
-           console.log("Found text at y:", item.transform[5], "with content:", item.str);
+           //console.log("Found text at y:", item.transform[5], "with content:", item.str);
        }
        
        return withinRange;
@@ -263,10 +490,10 @@ const relevantItems = items
        return yDiff;
    });
 
-console.log("Sorted items y-coordinates:");
-relevantItems.forEach(item => {
-    console.log("y:", item.transform[5], "text:", item.str);
-});
+//console.log("Sorted items y-coordinates:");
+//relevantItems.forEach(item => {
+//    console.log("y:", item.transform[5], "text:", item.str);
+//});
 
 // Process items line by line
 let isFirstLine = true;
@@ -606,8 +833,8 @@ async function addReferenceMarker(element, citationText) {
 }
 
 
+// Main citation processing function
 async function createCitationPopup(dummy) {
-  // Prevent concurrent processing
   if (isProcessing) return;
   isProcessing = true;
 
@@ -619,7 +846,12 @@ async function createCitationPopup(dummy) {
 
       const doc = PDFViewerApplication.pdfDocument;
 
-      // Get only unprocessed citation links
+      // First detect the layout
+      const firstPage = await doc.getPage(1);
+      const layout = await detectPageLayout(firstPage);
+      console.log('Detected layout:', layout);
+
+      // Get unprocessed citation links
       const linkElements = document.querySelectorAll('[data-annotation-id]');
       const citationLinks = Array.from(linkElements).filter(link => {
           const href = link.querySelector('a')?.getAttribute('href');
@@ -627,26 +859,38 @@ async function createCitationPopup(dummy) {
           return href?.startsWith('#cite.') && !processedAnnotationIds.has(annotationId);
       });
 
-      if (citationLinks.length === 0) {
-          return;
-      }
+      if (citationLinks.length === 0) return;
 
       console.log(`Processing ${citationLinks.length} new citations`);
 
-      // Detect format only if needed
+      // Detect citation format based on layout
       if (!detectedFormat) {
-          detectedFormat = await detectCitationFormat(doc, citationLinks[0]);
-          if (!detectedFormat) {
-              console.log("Could not detect citation format");
-              return;
+          if (layout.type === 'two-column') {
+              console.log('Using two-column citation processing');
+              detectedFormat = await detectTwoColumnCitationFormat(doc, citationLinks, layout);
+              if (!detectedFormat) {
+                  console.log("Could not detect two-column citation format");
+                  return;
+              }
+              console.log('Detected column x-coordinates:', {
+                  leftColumn: detectedFormat.leftColumnX,
+                  rightColumn: detectedFormat.rightColumnX
+              });
+          } else {
+              console.log('Using single-column citation processing');
+              detectedFormat = await detectCitationFormat(doc, citationLinks[0]);
+              if (!detectedFormat) {
+                  console.log("Could not detect citation format");
+                  return;
+              }
           }
       }
 
-      // Process each new citation
+      // Process each citation
       for (const link of citationLinks) {
           try {
               const annotationId = link.getAttribute('data-annotation-id');
-              processedAnnotationIds.add(annotationId);  // Mark as processed immediately
+              processedAnnotationIds.add(annotationId);
               
               if (citationTexts.has(annotationId)) {
                   addReferenceMarker(link, citationTexts.get(annotationId));
@@ -667,7 +911,16 @@ async function createCitationPopup(dummy) {
               const page = await doc.getPage(destPageNum + 1);
               const textContent = await page.getTextContent();
 
-              const citationText = await extractCitationText(destPageNum, x, y, textContent, detectedFormat);
+              let citationText;
+              if (layout.type === 'two-column') {
+                  citationText = await extractTwoColumnCitationText(
+                      destPageNum, x, y, textContent, detectedFormat
+                  );
+              } else {
+                  citationText = await extractCitationText(
+                      destPageNum, x, y, textContent, detectedFormat
+                  );
+              }
               
               if (citationText) {
                   citationTexts.set(annotationId, citationText);
@@ -681,6 +934,7 @@ async function createCitationPopup(dummy) {
       isProcessing = false;
   }
 }
+
 
 
 
