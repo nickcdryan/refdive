@@ -1050,6 +1050,61 @@ function addCitationPopups() {
   });
 }
 
+
+
+
+
+async function updateFavicon() {
+  console.log('Attempting to update favicon in viewer...');
+  
+  try {
+      // Request favicon from background script
+      const response = await chrome.runtime.sendMessage({
+          type: 'getFavicon'
+      });
+      
+      if (response && response.favicon) {
+          console.log('Retrieved favicon URL:', response.favicon);
+          
+          // Remove any existing favicon
+          const existingFavicon = document.querySelector('link[rel*="icon"]');
+          if (existingFavicon) {
+              existingFavicon.remove();
+          }
+          
+          // Create new favicon link
+          const link = document.createElement('link');
+          link.type = 'image/x-icon';
+          link.rel = 'shortcut icon';
+          link.href = response.favicon;
+          
+          // Add error handling
+          link.onerror = () => {
+              console.log('Failed to load favicon:', response.favicon);
+              try {
+                  // Try domain-level favicon as fallback
+                  const originalUrl = new URL(response.favicon);
+                  const domainFavicon = `${originalUrl.protocol}//${originalUrl.hostname}/favicon.ico`;
+                  console.log('Trying domain favicon:', domainFavicon);
+                  
+                  link.onerror = null; // Prevent infinite loop
+                  link.href = domainFavicon;
+              } catch (err) {
+                  console.error('Error setting fallback favicon:', err);
+              }
+          };
+          
+          document.head.appendChild(link);
+      }
+  } catch (error) {
+      console.error('Error updating favicon:', error);
+  }
+}
+
+// Add this to your existing initialization code
+document.addEventListener('DOMContentLoaded', updateFavicon);
+
+
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {
   const debounceScroll = function (evt) {
     if (rAF) {

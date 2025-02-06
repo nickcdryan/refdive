@@ -10,7 +10,9 @@
   "description": "PDF viewer with reference diving capabilities",
   "permissions": [
     "webRequest",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "storage",
+    "tabs"
   ],
   "background": {
     "service_worker": "background.js",
@@ -19,7 +21,15 @@
   "host_permissions": [
     "*://*/*.pdf",
     "*://arxiv.org/*",
-    "<all_urls>"
+    "<all_urls>",
+    "*://arxiv.org/*.pdf",
+    "*://*.researchgate.net/*",
+    "*://*.springer.com/*",
+    "*://*.jstor.org/*",
+    "*://*.sciencedirect.com/*",
+    "*://*.nature.com/*",
+    "*://*.ieee.org/*",
+    "*://*/*favicon*"  
   ],
   "web_accessible_resources": [{
     "resources": [

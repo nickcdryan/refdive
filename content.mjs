@@ -1,3 +1,40 @@
+console.log('RefDive content script starting...');
+
+// Capture favicon before page override
+function captureFavicon() {
+    console.log('Attempting to capture favicon...');
+    
+    let faviconUrl = '';
+    
+    // Try to get from link tags first
+    const linkTags = document.querySelectorAll('link[rel*="icon"]');
+    if (linkTags.length > 0) {
+        const sorted = Array.from(linkTags).sort((a, b) => {
+            const sizeA = parseInt(a.getAttribute('sizes')?.split('x')[0] || '0');
+            const sizeB = parseInt(b.getAttribute('sizes')?.split('x')[0] || '0');
+            return sizeB - sizeA;
+        });
+        faviconUrl = sorted[0].href;
+        console.log('Found favicon in link tags:', faviconUrl);
+    }
+    
+    // Fallback to default location
+    if (!faviconUrl) {
+        faviconUrl = new URL('/favicon.ico', window.location.origin).href;
+        console.log('Using default favicon location:', faviconUrl);
+    }
+    
+    // Store in background script
+    chrome.runtime.sendMessage({
+        type: 'storeFavicon',
+        favicon: faviconUrl
+    });
+}
+
+// Run before any page modifications
+captureFavicon();
+
+
 if (document.contentType === 'application/pdf' || window.location.pathname.endsWith('.pdf')) {
     const pdfUrl = window.location.href;
     const viewerUrl = chrome.runtime.getURL('web/viewer.html');

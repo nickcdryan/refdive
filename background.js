@@ -26,3 +26,20 @@ chrome.declarativeNetRequest.updateDynamicRules({
         }
     }]
 });
+
+const faviconCache = new Map();
+
+// Listen for messages from content script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'storeFavicon') {
+        faviconCache.set(sender.tab.id, message.favicon);
+    } else if (message.type === 'getFavicon') {
+        sendResponse({ favicon: faviconCache.get(sender.tab.id) });
+    }
+    return true;
+});
+
+// Clean up when tabs are closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+    faviconCache.delete(tabId);
+});
