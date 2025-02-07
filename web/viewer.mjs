@@ -135,6 +135,9 @@ function scrollIntoView(element, spot, scrollMatches = false) {
 
 
 
+
+
+
 let processedAnnotationIds = new Set();
 let citationTexts = new Map();
 let detectedFormat = null;
@@ -1104,6 +1107,92 @@ async function updateFavicon() {
 // Add this to your existing initialization code
 document.addEventListener('DOMContentLoaded', updateFavicon);
 
+
+
+
+(function() {
+  console.log('Title extractor script loaded');
+
+  async function extractAndSetTitle() {
+      console.log('Extract and set title function called');
+      
+      // Wait for PDFViewerApplication to be available
+      if (!window.PDFViewerApplication || !window.PDFViewerApplication.pdfDocument) {
+          console.log('Waiting for PDFViewerApplication...');
+          return;
+      }
+
+      try {
+          const doc = PDFViewerApplication.pdfDocument;
+          console.log('Got PDF document');
+
+          // Try to get title from metadata first
+          const metadata = await doc.getMetadata();
+          console.log('Metadata:', metadata);
+          
+          let title = metadata?.info?.Title;
+          console.log('Metadata title:', title);
+
+          // If no metadata title, try to extract from first page
+          if (!title || title.trim() === '') {
+              console.log('No metadata title, trying first page...');
+              const firstPage = await doc.getPage(1);
+              const textContent = await firstPage.getTextContent();
+              console.log('First page text items:', textContent.items.slice(0, 10));
+              
+              const candidates = textContent.items
+                  .slice(0, 10)
+                  .map(item => item.str.trim())
+                  .filter(str => str.length > 20 && str.length < 200)
+                  .sort((a, b) => b.length - a.length);
+
+              console.log('Title candidates:', candidates);
+              title = candidates[0] || 'Untitled PDF';
+          }
+
+          // Clean up the title
+          title = title.trim()
+              .replace(/\s+/g, ' ')
+              .replace(/[\r\n]/g, ' ');
+
+          if (title.length > 50) {
+              title = title.substring(0, 50) + '...';
+          }
+
+          console.log('Final title:', title);
+          document.title = title;
+      } catch (error) {
+          console.error('Error extracting title:', error);
+      }
+  }
+
+  // Try multiple events to ensure we catch the PDF load
+  window.addEventListener('documentload', () => {
+      console.log('documentload event fired');
+      extractAndSetTitle();
+  });
+
+  // Also try webviewerloaded event
+  window.addEventListener('webviewerloaded', () => {
+      console.log('webviewerloaded event fired');
+      extractAndSetTitle();
+  });
+
+  // Also try DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOMContentLoaded event fired');
+      setTimeout(extractAndSetTitle, 1000); // Add a delay to ensure PDF.js is ready
+  });
+
+  // Add a periodic check just in case
+  const checkInterval = setInterval(() => {
+      if (window.PDFViewerApplication?.pdfDocument) {
+          console.log('Found PDFViewerApplication via interval');
+          extractAndSetTitle();
+          clearInterval(checkInterval);
+      }
+  }, 1000);
+})();
 
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {
   const debounceScroll = function (evt) {
