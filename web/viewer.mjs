@@ -1110,44 +1110,136 @@ document.addEventListener('DOMContentLoaded', updateFavicon);
 
 
 
+
+// Add to viewer.mjs
+
 (function() {
   console.log('Title extractor script loaded');
+
+  function isVerticalText(transform) {
+      if (!transform || transform.length !== 6) return false;
+      const [a, b] = transform;
+      return Math.abs(a) < 0.1 && Math.abs(b) > 0.1;
+  }
+
+  function isInLeftMargin(transform, pageWidth) {
+      if (!transform || transform.length !== 6) return false;
+      const x = transform[4];
+      return x < (pageWidth * 0.15);
+  }
+
+  function isArXivText(text) {
+      return text.match(/arXiv:\d+\.\d+/) ||
+             text.match(/\[\w+\.\w+\]/) ||
+             text.match(/\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}/);
+  }
 
   async function extractAndSetTitle() {
       console.log('Extract and set title function called');
       
-      // Wait for PDFViewerApplication to be available
-      if (!window.PDFViewerApplication || !window.PDFViewerApplication.pdfDocument) {
+      if (!window.PDFViewerApplication?.pdfDocument) {
           console.log('Waiting for PDFViewerApplication...');
           return;
       }
 
       try {
           const doc = PDFViewerApplication.pdfDocument;
-          console.log('Got PDF document');
-
-          // Try to get title from metadata first
-          const metadata = await doc.getMetadata();
-          console.log('Metadata:', metadata);
           
+          // Try metadata first
+          const metadata = await doc.getMetadata();
           let title = metadata?.info?.Title;
-          console.log('Metadata title:', title);
-
-          // If no metadata title, try to extract from first page
+          
           if (!title || title.trim() === '') {
-              console.log('No metadata title, trying first page...');
+              console.log('No metadata title, analyzing first page text...');
               const firstPage = await doc.getPage(1);
+              const viewport = firstPage.getViewport({ scale: 1.0 });
+              const pageWidth = viewport.width;
+              const pageHeight = viewport.height;
               const textContent = await firstPage.getTextContent();
-              console.log('First page text items:', textContent.items.slice(0, 10));
-              
-              const candidates = textContent.items
-                  .slice(0, 10)
-                  .map(item => item.str.trim())
-                  .filter(str => str.length > 20 && str.length < 200)
-                  .sort((a, b) => b.length - a.length);
 
-              console.log('Title candidates:', candidates);
-              title = candidates[0] || 'Untitled PDF';
+              // Get items from top third of page
+              const topItems = textContent.items.filter(item => {
+                  const y = item.transform[5];
+                  return y > (pageHeight * 2/3); // PDF coordinates start from bottom
+              });
+
+              // Get all font sizes (excluding vertical text)
+              const fontSizes = new Set();
+              const itemsWithSizes = [];
+
+              topItems.forEach(item => {
+                  if (!isVerticalText(item.transform)) {
+                      const fontSize = item.height || Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]);
+                      fontSizes.add(fontSize);
+                      itemsWithSizes.push({ item, fontSize });
+                  }
+              });
+
+              // Sort font sizes in descending order
+              const sortedFontSizes = Array.from(fontSizes).sort((a, b) => b - a);
+              console.log('All font sizes found (descending):', sortedFontSizes);
+
+              // Only consider the largest and second largest font sizes
+              const validFontSizes = sortedFontSizes.slice(0, 2);
+              console.log('Using font sizes:', validFontSizes);
+
+              // First, get all text with the largest font size
+              const largestFontSize = validFontSizes[0];
+              const largestSizeItems = itemsWithSizes
+                  .filter(({ fontSize }) => Math.abs(fontSize - largestFontSize) < 0.1)
+                  .sort((a, b) => b.item.transform[5] - a.item.transform[5]); // Sort by vertical position
+
+              console.log('Items with largest font size:', largestSizeItems.map(i => ({
+                  text: i.item.str,
+                  y: i.item.transform[5]
+              })));
+
+              // Group these items by proximity
+              const titleLines = [];
+              let currentLine = [];
+              let lastY = null;
+              const Y_THRESHOLD = 25; // Increased threshold for multi-line titles
+
+              largestSizeItems.forEach(({ item }) => {
+                  const y = item.transform[5];
+                  const text = item.str.trim();
+
+                  if (text === '') return; // Skip empty strings
+
+                  if (lastY === null || Math.abs(y - lastY) <= Y_THRESHOLD) {
+                      currentLine.push(text);
+                  } else {
+                      if (currentLine.length > 0) {
+                          titleLines.push(currentLine.join(' ').trim());
+                      }
+                      currentLine = [text];
+                  }
+                  lastY = y;
+              });
+
+              if (currentLine.length > 0) {
+                  titleLines.push(currentLine.join(' ').trim());
+              }
+
+              console.log('Title lines found:', titleLines);
+
+              // Combine lines that look like a complete title
+              const validTitleLines = titleLines.filter(line => 
+                  line.length > 3 && // Skip very short lines
+                  !line.toLowerCase().includes('abstract') &&
+                  !line.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)/) &&
+                  !line.match(/^\d+$/) &&
+                  !line.toLowerCase().includes('journal of') &&
+                  !line.toLowerCase().includes('proceedings of')
+              );
+
+              console.log('Valid title lines:', validTitleLines);
+
+              if (validTitleLines.length > 0) {
+                  title = validTitleLines.join(' ');
+              } else {
+                  title = 'Untitled PDF';
+              }
           }
 
           // Clean up the title
@@ -1166,25 +1258,12 @@ document.addEventListener('DOMContentLoaded', updateFavicon);
       }
   }
 
-  // Try multiple events to ensure we catch the PDF load
-  window.addEventListener('documentload', () => {
-      console.log('documentload event fired');
-      extractAndSetTitle();
-  });
-
-  // Also try webviewerloaded event
+  // Event listeners
   window.addEventListener('webviewerloaded', () => {
       console.log('webviewerloaded event fired');
       extractAndSetTitle();
   });
 
-  // Also try DOMContentLoaded
-  document.addEventListener('DOMContentLoaded', () => {
-      console.log('DOMContentLoaded event fired');
-      setTimeout(extractAndSetTitle, 1000); // Add a delay to ensure PDF.js is ready
-  });
-
-  // Add a periodic check just in case
   const checkInterval = setInterval(() => {
       if (window.PDFViewerApplication?.pdfDocument) {
           console.log('Found PDFViewerApplication via interval');
@@ -1193,6 +1272,12 @@ document.addEventListener('DOMContentLoaded', updateFavicon);
       }
   }, 1000);
 })();
+
+
+
+
+
+
 
 function watchScroll(viewAreaElement, callback, abortSignal = undefined) {
   const debounceScroll = function (evt) {
