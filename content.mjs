@@ -1,3 +1,6 @@
+console.log('Storing original title:', document.title);
+localStorage.setItem('originalTabTitle', document.title);
+
 console.log('RefDive content script starting...');
 
 // Capture favicon before page override

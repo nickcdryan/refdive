@@ -1116,6 +1116,9 @@ document.addEventListener('DOMContentLoaded', updateFavicon);
 (function() {
   console.log('Title extractor script loaded');
 
+  const originalTabTitle = localStorage.getItem('originalTabTitle');
+  console.log('Original tab title:', originalTabTitle);
+
   function isVerticalText(transform) {
       if (!transform || transform.length !== 6) return false;
       const [a, b] = transform;
@@ -1238,7 +1241,8 @@ document.addEventListener('DOMContentLoaded', updateFavicon);
               if (validTitleLines.length > 0) {
                   title = validTitleLines.join(' ');
               } else {
-                  title = 'Untitled PDF';
+                title = originalTabTitle || document.title;
+                console.log('No valid title found, using original tab title:', title);
               }
           }
 
@@ -1255,6 +1259,7 @@ document.addEventListener('DOMContentLoaded', updateFavicon);
           document.title = title;
       } catch (error) {
           console.error('Error extracting title:', error);
+          document.title = originalTabTitle || document.title;
       }
   }
 
