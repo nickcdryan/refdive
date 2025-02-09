@@ -488,11 +488,15 @@ async function detectCitationFormat(doc, firstLink) {
 
         if (!citationStart) return null;
 
+        console.log("citationStart", citationStart)
+
         detectedFormat = {
             citationX: citationStart.transform[4],
             margin: 15,
             hasNumbers: !!citationStart.str.match(/^\[\d+\]/)
         };
+
+        console.log("hasnumbers",detectedFormat.hasNumbers)
 
         return detectedFormat;
     } catch (error) {
@@ -957,7 +961,7 @@ async function createCitationPopup(dummy) {
               });
           } else {
               console.log('Using single-column citation processing');
-              detectedFormat = await detectCitationFormat(doc, citationLinks[0]);
+              detectedFormat = await detectCitationFormat(doc, citationLinks[5]);
               if (!detectedFormat) {
                   console.log("Could not detect citation format");
                   return;
