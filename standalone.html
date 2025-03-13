@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PDF Viewer Paused</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+    h1 {
+      color: #333;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .url-display {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      word-break: break-all;
+      font-family: monospace;
+      margin: 10px 0;
+    }
+    button {
+      background: #0077cc;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #005fa3;
+    }
+    .button-secondary {
+      background: #6c757d;
+    }
+    .button-secondary:hover {
+      background: #5a6268;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>PDF Viewer Extension Paused</h1>
+    <p>The PDF viewer extension is currently being updated or refreshed. Your PDF URL has been preserved and you can:</p>
+    
+    <h3>PDF URL:</h3>
+    <div class="url-display" id="pdfUrl">Loading PDF URL...</div>
+    
+    <div style="margin-top: 20px;">
+      <button id="openPdfButton">Open PDF in Default Viewer</button>
+      <button id="copyUrlButton" class="button-secondary">Copy URL</button>
+    </div>
+    
+    <p style="margin-top: 20px; font-size: 14px; color: #666;">
+      Once the extension refresh is complete, you can reopen the PDF to use the custom viewer.
+    </p>
+  </div>
+
+  <script>
+    // This script is completely self-contained and does not rely on extension context
+    document.addEventListener('DOMContentLoaded', function() {
+      // Try to get PDF URL from various locations
+      function getPdfUrl() {
+        // First try URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlParam = urlParams.get('pdf');
+        
+        // Then try local/session storage
+        const fromLocalStorage = localStorage.getItem('pdfUrl');
+        const fromSessionStorage = sessionStorage.getItem('pdfUrl');
+        
+        // Try cookies
+        let fromCookie = null;
+        document.cookie.split(';').forEach(cookie => {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'pdfUrl') {
+            fromCookie = decodeURIComponent(value);
+          }
+        });
+        
+        // Return first available URL
+        return urlParam || fromSessionStorage || fromLocalStorage || fromCookie || '';
+      }
+      
+      // Get and display the PDF URL
+      const pdfUrl = getPdfUrl();
+      const pdfUrlElement = document.getElementById('pdfUrl');
+      
+      if (pdfUrl) {
+        pdfUrlElement.textContent = pdfUrl;
+        
+        // Set up the open button
+        const openButton = document.getElementById('openPdfButton');
+        openButton.addEventListener('click', function() {
+          window.location.href = pdfUrl;
+        });
+        
+        // Set up copy button
+        const copyButton = document.getElementById('copyUrlButton');
+        copyButton.addEventListener('click', function() {
+          navigator.clipboard.writeText(pdfUrl).then(function() {
+            copyButton.textContent = 'Copied!';
+            setTimeout(function() {
+              copyButton.textContent = 'Copy URL';
+            }, 2000);
+          }).catch(function(err) {
+            console.error('Could not copy text: ', err);
+            // Fallback for browsers that don't support clipboard API
+            const textArea = document.createElement('textarea');
+            textArea.value = pdfUrl;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            copyButton.textContent = 'Copied!';
+            setTimeout(function() {
+              copyButton.textContent = 'Copy URL';
+            }, 2000);
+          });
+        });
+      } else {
+        pdfUrlElement.textContent = 'No PDF URL found. The URL may have been lost during the extension refresh.';
+        document.getElementById('openPdfButton').disabled = true;
+        document.getElementById('copyUrlButton').disabled = true;
+      }
+    });
+  </script>
+</body>
+</html> 

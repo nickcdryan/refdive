@@ -9,39 +9,47 @@
   "version": "1.0",
   "description": "PDF viewer with reference diving capabilities",
   "permissions": [
-    "webRequest",
-    "declarativeNetRequest",
     "storage",
-    "tabs"
+    "tabs",
+    "contextMenus",
+    "downloads",
+    "notifications"
   ],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "background-bundle.js",
     "type": "module"
+  },
+  "action": {
+    "default_title": "Open in RefDive Enhanced Viewer",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
   "host_permissions": [
     "*://*/*.pdf",
-    "*://arxiv.org/*",
-    "<all_urls>",
-    "*://arxiv.org/*.pdf",
-    "*://*.researchgate.net/*",
-    "*://*.springer.com/*",
-    "*://*.jstor.org/*",
-    "*://*.sciencedirect.com/*",
-    "*://*.nature.com/*",
-    "*://*.ieee.org/*",
-    "*://*/*favicon*"  
+    "https://export.arxiv.org/*"
   ],
   "web_accessible_resources": [{
     "resources": [
       "web/*",
-      "build/*"
+      "build/*",
+      "recovery.html",
+      "recovery.js",
+      "icon16.png",
+      "icon48.png",
+      "icon128.png",
+      "web/lifecycle.js"
     ],
     "matches": ["<all_urls>"]
   }],
-  "content_scripts": [{
-    "matches": ["*://*/*.pdf", "*://arxiv.org/*"],
-    "js": ["content.mjs"],
-    "type": "module",
-    "run_at": "document_start"
-  }]
+  "content_scripts": [
+    {
+      "matches": ["*://arxiv.org/*"],
+      "js": ["content.mjs"],
+      "type": "module",
+      "run_at": "document_start"
+    }
+  ]
 }

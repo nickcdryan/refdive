@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RefDive PDF Recovery</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9fafb;
+            color: #1f2937;
+        }
+        
+        h1 {
+            color: #111827;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .search {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            width: 300px;
+            font-size: 14px;
+        }
+        
+        .pdf-list {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .pdf-item {
+            padding: 16px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        
+        .pdf-item:last-child {
+            border-bottom: none;
+        }
+        
+        .pdf-item:hover {
+            background-color: #f3f4f6;
+        }
+        
+        .pdf-icon {
+            width: 36px;
+            height: 36px;
+            margin-right: 16px;
+            background-color: #ef4444;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .pdf-details {
+            flex: 1;
+        }
+        
+        .pdf-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #111827;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 500px;
+        }
+        
+        .pdf-url {
+            color: #6b7280;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 500px;
+        }
+        
+        .pdf-time {
+            color: #6b7280;
+            font-size: 12px;
+            margin-top: 2px;
+        }
+        
+        .pdf-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        button {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        
+        .open-pdf {
+            background-color: #f3f4f6;
+            color: #111827;
+        }
+        
+        .open-pdf:hover {
+            background-color: #e5e7eb;
+        }
+        
+        .open-enhanced {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .open-enhanced:hover {
+            background-color: #2563eb;
+        }
+        
+        .no-pdfs {
+            padding: 20px;
+            text-align: center;
+            color: #6b7280;
+        }
+        
+        .description {
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            border-radius: 0 6px 6px 0;
+        }
+        
+        .description h3 {
+            margin-top: 0;
+            color: #1e40af;
+        }
+        
+        .description p {
+            margin-bottom: 0;
+            color: #1e3a8a;
+        }
+        
+        .alert {
+            background-color: #fee2e2;
+            border-left: 4px solid #ef4444;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            border-radius: 0 6px 6px 0;
+            display: none;
+        }
+        
+        .alert h3 {
+            margin-top: 0;
+            color: #b91c1c;
+        }
+        
+        .alert p {
+            margin-bottom: 0;
+            color: #7f1d1d;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        
+        .extension-active {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .extension-inactive {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+        
+        .extension-checking {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .refresh-btn {
+            background-color: #10b981;
+            color: white;
+        }
+        
+        .refresh-btn:hover {
+            background-color: #059669;
+        }
+        
+        .debug-btn {
+            background-color: #6b7280;
+            color: white;
+        }
+        
+        .debug-btn:hover {
+            background-color: #4b5563;
+        }
+        
+        .bookmark-btn {
+            background-color: #f59e0b;
+            color: white;
+        }
+        
+        .bookmark-btn:hover {
+            background-color: #d97706;
+        }
+        
+        .debug-panel {
+            background-color: #18181b;
+            color: #22c55e;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: monospace;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow: auto;
+            display: none;
+        }
+        
+        .standalone-banner {
+            background-color: #f3f4f6;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #4b5563;
+            display: none;
+        }
+        
+        @media (max-width: 768px) {
+            .pdf-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .pdf-details {
+                margin-bottom: 12px;
+                width: 100%;
+            }
+            
+            .pdf-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <img src="icon48.png" alt="RefDive Logo" style="vertical-align: middle; margin-right: 10px;" onerror="this.style.display='none'">
+            RefDive PDF Recovery 
+            <span id="extensionStatus" class="status-indicator extension-checking">Checking...</span>
+        </h1>
+    </div>
+    
+    <div class="alert" id="recoveryAlert">
+        <h3>⚠️ Extension Disabled or Refreshed</h3>
+        <p>The RefDive extension has been disabled or is currently refreshing. You can use this page to access your PDF history and reopen your documents.</p>
+        <p style="margin-top: 8px;"><strong>Tip:</strong> Bookmark this page now for future access if the extension becomes unavailable again.</p>
+    </div>
+    
+    <div class="standalone-banner" id="standaloneBanner">
+        <strong>This page is working in standalone mode.</strong> Your PDFs are loaded from emergency backup. 
+        <button id="bookmarkThisPage" class="bookmark-btn" style="display:inline-block; margin-left: 10px; padding: 4px 8px;">Bookmark This Page</button>
+    </div>
+    
+    <div class="description">
+        <h3>PDF History and Recovery</h3>
+        <p>This page shows all the PDFs you've viewed. If your extension crashes or is disabled, you can reopen PDFs from here. <span class="bookmark-tip">Consider bookmarking this page for quick access!</span></p>
+    </div>
+    
+    <div class="controls">
+        <input type="text" class="search" id="searchInput" placeholder="Search for PDFs...">
+        <div class="action-buttons">
+            <button class="refresh-btn" id="refreshBtn">Refresh History</button>
+            <button class="debug-btn" id="debugBtn">Debug</button>
+            <button class="bookmark-btn" id="bookmarkBtn">Bookmark This Page</button>
+        </div>
+    </div>
+    
+    <div class="pdf-list" id="pdfList">
+        <div class="no-pdfs">Loading PDF history...</div>
+    </div>
+    
+    <div class="debug-panel" id="debugPanel"></div>
+    
+    <!-- Include the external JavaScript file -->
+    <script src="recovery.js"></script>
+</body>
+</html> 

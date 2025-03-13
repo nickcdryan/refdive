@@ -32,7 +32,7 @@ See https://github.com/adobe-type-tools/cmap-resources
     
     <style>
       #viewerContainer {
-          background: #848383  !important; 
+          background: transparent !important; 
       }
 
       .pdfViewer .page {
@@ -40,7 +40,7 @@ See https://github.com/adobe-type-tools/cmap-resources
       }
 
       body {
-          background: #535759 !important;
+          background: transparent !important;
       }
     </style>
   
@@ -58,6 +58,12 @@ See https://github.com/adobe-type-tools/cmap-resources
     <!-- Finally load the viewer -->
     <link rel="stylesheet" href="viewer.css">
     <script src="viewer.mjs" type="module" defer></script>
+
+    <!-- Background image collection -->
+    <script src="backgrounds.js"></script>
+    
+    <!-- Extension lifecycle handling script -->
+    <script src="lifecycle.js"></script>
   </head>
 
   <body tabindex="0">
