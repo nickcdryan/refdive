@@ -5229,7 +5229,7 @@ dialog :link{
   position: absolute;
   width: 10px;
   height: 10px;
-  background-color: red;
+  background-color: transparent;
   border-radius: 50%;
   pointer-events: none;
   z-index: 1000;
