@@ -10,10 +10,7 @@
   "description": "PDF viewer with reference diving capabilities",
   "permissions": [
     "storage",
-    "tabs",
-    "contextMenus",
-    "downloads",
-    "notifications"
+    "tabs"
   ],
   "background": {
     "service_worker": "background-bundle.js",
