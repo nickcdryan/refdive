@@ -155,36 +155,41 @@ function addBackgroundImage() {
     // Create a div for the background
     const bgDiv = document.createElement('div');
     bgDiv.id = 'refdive-background';
-    
-    bgDiv.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: -1000;
-      background-image: url('${backgroundUrl}');
-      background-size: 100% auto;
-      background-position: center;
-      background-repeat: no-repeat;
-      opacity: 0.25;
-      pointer-events: none;
-    `;
-    
-    // Add to the document
-    document.body.appendChild(bgDiv);
-    
-    // Also update the background color of the body and viewer to be transparent/lighter
-    document.body.style.backgroundColor = 'rgba(255, 255, 255, 0.92)';
-    
-    // Try to find the viewer container and make it more transparent
-    const viewerContainer = document.getElementById('viewerContainer');
-    if (viewerContainer) {
-      viewerContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.85)';
-    }
-    
-    // Add a control to change the background (optional)
-    addBackgroundControls(bgDiv);
+
+    // Load saved opacity or use default
+    chrome.storage.sync.get(['backgroundOpacity'], function(result) {
+      const savedOpacity = result.backgroundOpacity || 0.25;  // Default to 0.25 if not set
+      
+      bgDiv.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -1000;
+        background-image: url('${backgroundUrl}');
+        background-size: 100% auto;
+        background-position: center;
+        background-repeat: no-repeat;
+        opacity: ${savedOpacity};
+        pointer-events: none;
+      `;
+      
+      // Add to the document
+      document.body.appendChild(bgDiv);
+      
+      // Also update the background color of the body and viewer to be transparent/lighter
+      document.body.style.backgroundColor = 'rgba(255, 255, 255, 0.92)';
+      
+      // Try to find the viewer container and make it more transparent
+      const viewerContainer = document.getElementById('viewerContainer');
+      if (viewerContainer) {
+        viewerContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.85)';
+      }
+      
+      // Add a control to change the background (optional)
+      addBackgroundControls(bgDiv, savedOpacity);
+    });
     
     console.log('Added background image to PDF viewer');
   } catch (e) {
@@ -193,7 +198,7 @@ function addBackgroundImage() {
 }
 
 // Function to add controls to change the background (optional)
-function addBackgroundControls(bgDiv) {
+function addBackgroundControls(bgDiv, initialOpacity) {
   try {
     // Create a small floating control
     const controlDiv = document.createElement('div');
@@ -236,12 +241,15 @@ function addBackgroundControls(bgDiv) {
     const opacitySlider = document.createElement('input');
     opacitySlider.type = 'range';
     opacitySlider.min = '0';
-    opacitySlider.max = '50';
-    opacitySlider.value = '25';  // Default to 25% opacity (more visible)
+    opacitySlider.max = '100';
+    opacitySlider.value = Math.round(initialOpacity * 100);  // Convert from decimal to percentage
     opacitySlider.style.width = '60px';
     opacitySlider.title = 'Adjust background opacity';
     opacitySlider.onchange = function() {
-      bgDiv.style.opacity = this.value / 100;
+      const opacity = this.value / 100;
+      bgDiv.style.opacity = opacity;
+      // Save the opacity value
+      chrome.storage.sync.set({ backgroundOpacity: opacity });
     };
     opacitySlider.oninput = function() {
       bgDiv.style.opacity = this.value / 100;
