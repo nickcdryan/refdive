@@ -5234,3 +5234,12 @@ dialog :link{
   pointer-events: none;
   z-index: 1000;
 }
+
+.citation-marker-wrapper {
+  pointer-events: none;
+}
+
+.citation-marker {
+  pointer-events: auto;
+  cursor: pointer;
+}

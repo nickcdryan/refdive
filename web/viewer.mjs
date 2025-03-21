@@ -649,6 +649,18 @@ async function addReferenceMarker(element, citationText) {
         background-color: rgba(255, 0, 0, 0);
         border-radius: 2px;
     `;
+    
+    // Add click handler to pass clicks through to the underlying link
+    refMarker.addEventListener('click', (event) => {
+        // Find the original link element
+        const originalLink = element.querySelector('a');
+        if (originalLink) {
+            // Stop the current event from propagating
+            event.stopPropagation();
+            // Programmatically trigger the original link click
+            originalLink.click();
+        }
+    });
 
     const popup = document.createElement('div');
     popup.className = 'citation-popup';
