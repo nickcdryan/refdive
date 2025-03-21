@@ -130,6 +130,22 @@ if (document.readyState === 'loading') {
     
     // Add a background image
     addBackgroundImage();
+
+    // Restore the original URL in the address bar
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const pdfUrl = urlParams.get('file');
+      
+      if (pdfUrl) {
+        const decodedUrl = decodeURIComponent(pdfUrl);
+        console.log('Restoring original URL in address bar:', decodedUrl);
+        
+        // Use replaceState to update URL without adding to browser history
+        window.history.replaceState({}, document.title, decodedUrl);
+      }
+    } catch (e) {
+      console.error('Error restoring original URL:', e);
+    }
   });
 } else {
   const pdfUrl = originalPdfUrl || localStorage.getItem('pdfUrl') || sessionStorage.getItem('pdfUrl');
@@ -140,6 +156,22 @@ if (document.readyState === 'loading') {
   
   // Add a background image
   addBackgroundImage();
+  
+  // Restore the original URL in the address bar
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pdfUrl = urlParams.get('file');
+    
+    if (pdfUrl) {
+      const decodedUrl = decodeURIComponent(pdfUrl);
+      console.log('Restoring original URL in address bar:', decodedUrl);
+      
+      // Use replaceState to update URL without adding to browser history
+      window.history.replaceState({}, document.title, decodedUrl);
+    }
+  } catch (e) {
+    console.error('Error restoring original URL:', e);
+  }
 }
 
 // Function to add a background image to the viewer
@@ -481,7 +513,6 @@ function addBackgroundControls(bgDiv, initialOpacity) {
         } catch (e) {
           console.error('Could not access PDFViewerApplication:', e);
         }
-        
       } else {
         // Remove dark mode styles
         const style = document.getElementById('dark-mode-style');
