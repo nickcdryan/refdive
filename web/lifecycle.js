@@ -157,8 +157,9 @@ function addBackgroundImage() {
     bgDiv.id = 'refdive-background';
 
     // Load saved opacity or use default
-    chrome.storage.sync.get(['backgroundOpacity'], function(result) {
+    chrome.storage.sync.get(['backgroundOpacity', 'darkMode'], function(result) {
       const savedOpacity = result.backgroundOpacity || 0.25;  // Default to 0.25 if not set
+      const isDarkMode = result.darkMode || false;
       
       bgDiv.style.cssText = `
         position: fixed;
@@ -178,13 +179,101 @@ function addBackgroundImage() {
       // Add to the document
       document.body.appendChild(bgDiv);
       
-      // Also update the background color of the body and viewer to be transparent/lighter
-      document.body.style.backgroundColor = 'rgba(255, 255, 255, 0.92)';
-      
-      // Try to find the viewer container and make it more transparent
-      const viewerContainer = document.getElementById('viewerContainer');
-      if (viewerContainer) {
-        viewerContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.85)';
+      // Set background color based on dark mode
+      if (isDarkMode) {
+        document.body.style.backgroundColor = 'rgba(32, 33, 36, 0.92)';
+        
+        // Try to find the viewer container and make it more transparent
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer) {
+          viewerContainer.style.backgroundColor = 'rgba(32, 33, 36, 0.85)';
+        }
+        
+        // Apply dark mode styles
+        let style = document.getElementById('dark-mode-style');
+        if (!style) {
+          style = document.createElement('style');
+          style.id = 'dark-mode-style';
+          document.head.appendChild(style);
+        }
+        
+        style.textContent = `
+          :root {
+            --viewer-container-height: 100vh;
+            --viewer-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --main-color: rgba(255, 255, 255, 1);
+            --main-bg-color: rgba(38, 38, 38, 1);
+            --toolbar-bg-color: rgba(50, 50, 50, 1);
+            --toolbar-color: rgba(242, 242, 242, 1);
+            --doorhanger-bg-color: rgba(74, 74, 74, 1);
+            --doorhanger-border-color: rgba(39, 39, 39, 1);
+            --doorhanger-hover-color: rgba(249, 249, 250, 1);
+            --doorhanger-hover-bg-color: rgba(93, 94, 98, 1);
+            --doorhanger-separator-color: rgba(132, 133, 137, 1);
+            --button-hover-color: rgba(221, 222, 223, 1);
+            --toggled-btn-color: rgba(0, 0, 0, 1);
+            --toggled-btn-bg-color: rgba(0, 0, 0, 0.3);
+            --dropdown-btn-bg-color: rgba(0, 0, 0, 0.2);
+            --separator-color: rgba(255, 255, 255, 0.2);
+            --scrollbar-color: rgba(121, 121, 123, 1);
+            --scrollbar-bg-color: rgba(35, 35, 39, 1);
+            --sidebar-bg-color: rgba(0, 0, 0, 0.15);
+            --sidebar-shadow: rgba(0, 0, 0, 0.5);
+            --findbar-nextprevious-btn-bg-color: rgba(89, 89, 89, 1);
+            --overlay-button-bg-color: #212121;
+            --overlay-button-hover-bg-color: #2f2e2e;
+            --loading-bar: rgba(40, 40, 43, 1);
+            --loading-bar-active: #0060df;
+            --focus-outline: auto;
+            --focus-outline-color: transparent;
+            --editorFreeText-editing-cursor: default;
+            --editorInk-editing-cursor: default;
+          }
+          
+          /* Direct PDF page modifications */
+          .page {
+            background-color: #2C2C2C !important;
+          }
+          
+          /* Canvas inversion for PDF content */
+          .canvasWrapper canvas {
+            filter: invert(100%) hue-rotate(180deg) !important;
+          }
+          
+          /* Text layer inversion */
+          .textLayer {
+            filter: invert(100%) hue-rotate(180deg) !important;
+            mix-blend-mode: screen !important;
+            opacity: 0.8 !important;
+          }
+          
+          /* Mark it clearly as dark mode */
+          body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #232323;
+            z-index: -2000;
+            pointer-events: none;
+          }
+          
+          /* Better handling for the background image in dark mode */
+          #refdive-background {
+            filter: brightness(0.7) !important;
+          }
+        `;
+      } else {
+        // Also update the background color of the body and viewer to be transparent/lighter
+        document.body.style.backgroundColor = 'rgba(255, 255, 255, 0.92)';
+        
+        // Try to find the viewer container and make it more transparent
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer) {
+          viewerContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.85)';
+        }
       }
       
       // Add a control to change the background (optional)
@@ -255,10 +344,195 @@ function addBackgroundControls(bgDiv, initialOpacity) {
       bgDiv.style.opacity = this.value / 100;
     };
     
+    // Add dark mode toggle
+    const darkModeBtn = document.createElement('button');
+    
+    // Check if dark mode is enabled in storage
+    chrome.storage.sync.get(['darkMode'], function(result) {
+      const isDarkMode = result.darkMode || false;
+      updateDarkModeUI(isDarkMode);
+      applyDarkMode(isDarkMode);
+    });
+    
+    darkModeBtn.style.cssText = `
+      border: none;
+      background: #f0f0f0;
+      border-radius: 3px;
+      cursor: pointer;
+      padding: 3px 6px;
+      font-size: 14px;
+      margin-left: 5px;
+    `;
+    darkModeBtn.title = 'Toggle dark mode';
+    
+    function updateDarkModeUI(isDarkMode) {
+      darkModeBtn.textContent = isDarkMode ? '☀️' : '🌙';
+      if (isDarkMode) {
+        controlDiv.style.background = 'rgba(50, 50, 50, 0.7)';
+        controlDiv.style.color = '#fff';
+        darkModeBtn.style.background = '#555';
+        refreshBtn.style.background = '#555';
+      } else {
+        controlDiv.style.background = 'rgba(255, 255, 255, 0.7)';
+        controlDiv.style.color = '#000';
+        darkModeBtn.style.background = '#f0f0f0';
+        refreshBtn.style.background = '#f0f0f0';
+      }
+    }
+    
+    function applyDarkMode(isDarkMode) {
+      if (isDarkMode) {
+        // Create or update the dark mode style element
+        let style = document.getElementById('dark-mode-style');
+        if (!style) {
+          style = document.createElement('style');
+          style.id = 'dark-mode-style';
+          document.head.appendChild(style);
+        }
+        
+        style.textContent = `
+          :root {
+            --viewer-container-height: 100vh;
+            --viewer-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --main-color: rgba(255, 255, 255, 1);
+            --main-bg-color: rgba(38, 38, 38, 1);
+            --toolbar-bg-color: rgba(50, 50, 50, 1);
+            --toolbar-color: rgba(242, 242, 242, 1);
+            --doorhanger-bg-color: rgba(74, 74, 74, 1);
+            --doorhanger-border-color: rgba(39, 39, 39, 1);
+            --doorhanger-hover-color: rgba(249, 249, 250, 1);
+            --doorhanger-hover-bg-color: rgba(93, 94, 98, 1);
+            --doorhanger-separator-color: rgba(132, 133, 137, 1);
+            --button-hover-color: rgba(221, 222, 223, 1);
+            --toggled-btn-color: rgba(0, 0, 0, 1);
+            --toggled-btn-bg-color: rgba(0, 0, 0, 0.3);
+            --dropdown-btn-bg-color: rgba(0, 0, 0, 0.2);
+            --separator-color: rgba(255, 255, 255, 0.2);
+            --scrollbar-color: rgba(121, 121, 123, 1);
+            --scrollbar-bg-color: rgba(35, 35, 39, 1);
+            --sidebar-bg-color: rgba(0, 0, 0, 0.15);
+            --sidebar-shadow: rgba(0, 0, 0, 0.5);
+            --findbar-nextprevious-btn-bg-color: rgba(89, 89, 89, 1);
+            --overlay-button-bg-color: #212121;
+            --overlay-button-hover-bg-color: #2f2e2e;
+            --loading-bar: rgba(40, 40, 43, 1);
+            --loading-bar-active: #0060df;
+            --focus-outline: auto;
+            --focus-outline-color: transparent;
+            --editorFreeText-editing-cursor: default;
+            --editorInk-editing-cursor: default;
+          }
+          
+          /* Direct PDF page modifications */
+          .page {
+            background-color: #2C2C2C !important;
+          }
+          
+          /* Canvas inversion for PDF content */
+          .canvasWrapper canvas {
+            filter: invert(100%) hue-rotate(180deg) !important;
+          }
+          
+          /* Text layer inversion */
+          .textLayer {
+            filter: invert(100%) hue-rotate(180deg) !important;
+            mix-blend-mode: screen !important;
+            opacity: 0.8 !important;
+          }
+          
+          /* Mark it clearly as dark mode */
+          body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #232323;
+            z-index: -2000;
+            pointer-events: none;
+          }
+          
+          /* Better handling for the background image in dark mode */
+          #refdive-background {
+            filter: brightness(0.7) !important;
+          }
+        `;
+        
+        // Apply dark background colors
+        document.body.style.backgroundColor = 'rgba(32, 33, 36, 0.92)';
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer) {
+          viewerContainer.style.backgroundColor = 'rgba(32, 33, 36, 0.85)';
+        }
+        
+        // Try to access the PDFViewerApplication
+        try {
+          if (window.PDFViewerApplication) {
+            // Force a refresh of the viewer
+            const currentPage = window.PDFViewerApplication.page;
+            setTimeout(() => {
+              // This forces a redraw of the current page with new styles
+              if (window.PDFViewerApplication.pdfViewer) {
+                window.PDFViewerApplication.pdfViewer.update();
+              }
+            }, 100);
+          }
+        } catch (e) {
+          console.error('Could not access PDFViewerApplication:', e);
+        }
+        
+      } else {
+        // Remove dark mode styles
+        const style = document.getElementById('dark-mode-style');
+        if (style) {
+          style.textContent = '';
+        }
+        
+        // Restore original background color
+        document.body.style.backgroundColor = 'rgba(255, 255, 255, 0.92)';
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer) {
+          viewerContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.85)';
+        }
+        
+        // Try to access the PDFViewerApplication
+        try {
+          if (window.PDFViewerApplication) {
+            // Force a refresh of the viewer
+            setTimeout(() => {
+              // This forces a redraw of the current page with new styles
+              if (window.PDFViewerApplication.pdfViewer) {
+                window.PDFViewerApplication.pdfViewer.update();
+              }
+            }, 100);
+          }
+        } catch (e) {
+          console.error('Could not access PDFViewerApplication:', e);
+        }
+      }
+    }
+    
+    darkModeBtn.onclick = function() {
+      // Toggle dark mode
+      chrome.storage.sync.get(['darkMode'], function(result) {
+        const newDarkModeState = !(result.darkMode || false);
+        
+        // Save the new state
+        chrome.storage.sync.set({ darkMode: newDarkModeState }, function() {
+          // Update the UI
+          updateDarkModeUI(newDarkModeState);
+          // Apply the change
+          applyDarkMode(newDarkModeState);
+        });
+      });
+    };
+    
     // Add controls to the page
     controlDiv.appendChild(refreshBtn);
     controlDiv.appendChild(document.createTextNode('Opacity:'));
     controlDiv.appendChild(opacitySlider);
+    controlDiv.appendChild(darkModeBtn);
     document.body.appendChild(controlDiv);
   } catch (e) {
     console.error('Error adding background controls:', e);
